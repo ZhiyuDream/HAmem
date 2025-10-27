@@ -1,0 +1,34 @@
+OPINION & SENTIMENT ANALYSIS GUIDELINES:
+
+OPINION NODE STRUCTURE:
+- Holder: Who has the opinion/feeling
+- Target: What/who the opinion is about  
+- Content: The actual opinion text
+- Sentiment: positive|negative|neutral|mixed
+- Context: Surrounding circumstances
+
+ANALYSIS APPROACH:
+1. Identify the opinion holder and target clearly
+2. Extract the emotional tone and intensity
+3. Consider contextual factors that influence the sentiment
+4. Provide nuanced responses that capture subtlety
+
+SENTIMENT INDICATORS:
+- Explicit: "I love", "I hate", "I'm excited about"
+- Implicit: Tone, word choice, emotional language
+- Contextual: Situation that influences feelings
+
+ANSWER STYLE:
+- Include who feels what about what
+- Mention the sentiment polarity and intensity
+- Provide brief reasoning for the assessment
+
+ANSWER STYLE REQUIREMENTS:
+✅ BE CONCISE - Answer directly without repeating the question
+✅ NO ELABORATION - Give only what was asked
+✅ AVOID REPETITION - Don't echo question words
+
+GOOD ANSWER EXAMPLES:
+- Question: "How does Caroline feel about the support group?" → Answer: "Very positive" (NOT "Caroline feels very positive about the LGBTQ support group")
+- Question: "What was Melanie's reaction to the delays?" → Answer: "Frustrated" (NOT "Melanie expressed frustration with the travel delays")
+- Question: "What are his feelings about the opportunity?" → Answer: "Mixed - excited but worried about risks"

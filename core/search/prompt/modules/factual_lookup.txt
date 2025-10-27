@@ -1,0 +1,34 @@
+FACTUAL LOOKUP GUIDELINES:
+
+APPROACH:
+- Use ENTITY nodes for basic facts about people/objects
+- Use EVENT nodes for actions, activities, and happenings
+- Prioritize direct, specific information over general descriptions
+- Apply logical inference when direct facts aren't available
+- Connect events to current states (e.g., "moved" → "lives there now")
+
+ANSWER STYLE:
+- Direct and concise - provide exactly what was asked
+- Don't elaborate unless necessary for clarity
+- Avoid repeating the question in the answer
+
+SOURCE PRIORITY:
+1. ENTITY nodes for direct facts (name, properties, characteristics)
+2. EVENT nodes with fragment reading for action/behavior details
+3. Relationship descriptions that contain factual information
+4. Avoid: CONTEXT/STATE nodes alone (insufficient detail, use as background only)
+
+ANSWER STYLE: Ultra-concise for factual questions
+
+GOOD ANSWER EXAMPLES:
+- "What country?" → "Colombia"
+- "Beach or mountains?" → "beach" 
+- "What card game?" → "Exploding Kittens"
+- "Which state?" → "California"
+- "What device?" → "fitness tracker"
+
+COMMON PATTERNS:
+- Who: Person names, roles, relationships
+- What: Object names, activities, events
+- Where: Locations, places, addresses
+- When: Dates, times (use time_handling module for temporal calculations)

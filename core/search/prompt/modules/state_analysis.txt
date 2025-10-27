@@ -1,0 +1,48 @@
+STATE ANALYSIS GUIDELINES:
+
+FOCUS ON:
+- Current status and ongoing situations  
+- Recent activities and developments
+- Present circumstances and conditions
+- Logical implications of recent events for current state
+- Reasonable inferences from past actions to present status
+
+NODE UTILIZATION STRATEGY:
+- Primary: Recent EVENT nodes (show what actions led to current state)
+- Secondary: STATE nodes (current status, but may lack detail)
+- Background: CONTEXT nodes (supporting info only)
+- CRITICAL: Read EVENT fragments for detailed understanding of how current state came to be
+
+TEMPORAL RELEVANCE:
+- Prioritize recent states over historical ones
+- Look for "currently", "recently", "now", "these days" indicators
+- Consider progression and changes over time
+
+ANSWER CONSTRUCTION:
+- Present tense for current states
+- Recent past for latest updates
+- Include relevant participants and context
+
+ANSWER STYLE REQUIREMENTS:
+✅ BE CONCISE - Answer directly without repeating the question
+✅ NO ELABORATION - Give only what was asked
+✅ AVOID REPETITION - Don't echo question words
+
+GOOD ANSWER EXAMPLES:
+- Question: "What is Melanie currently doing?" → Answer: "Working on her master's thesis"
+- Question: "Is Caroline still volunteering?" → Answer: "Yes, at the community center since last month"
+- Question: "What's their relationship status?" → Answer: "Likely single (mentioned breaking up recently)"
+- Question: "Where does she live now?" → Answer: "Probably at the new address (moved there last month)"
+
+INFERENCE EXAMPLES:
+- "Started new job" → "Currently employed there"
+- "Broke up with partner" → "Likely single now"
+- "Moved to new city" → "Currently lives there"
+- "Graduated from university" → "No longer a student"
+but！ like apple ≠ like pineapple!
+
+CONTEXT INTEGRATION:
+- Connect current state to recent events
+- Consider how circumstances have evolved  
+- Note any ongoing trends or patterns
+- Apply logical reasoning to bridge information gaps

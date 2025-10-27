@@ -1,0 +1,35 @@
+DETAIL EXTRACTION GUIDELINES:
+
+APPROACH:
+- Look for specific attributes, properties, and characteristics
+- FOR EVENT QUESTIONS: Find the specific event first, then read its fragment
+- Check fragment content for detailed descriptions and sequences
+- Examine relationship descriptions for additional details
+- For "after X" questions: Look for the X event and read subsequent fragments
+
+SEARCH STRATEGY:
+- Primary: EVENT nodes with fragment reading (these contain the actual details)
+- Secondary: Direct attribute mentions in ENTITY nodes
+- Avoid: Relying solely on CONTEXT/STATE nodes (they're just background info)
+
+
+ANSWER COMPLETENESS:
+- Provide the specific detail requested
+- Include relevant context if it aids understanding
+- Acknowledge when details are limited or unavailable
+
+ANSWER STYLE REQUIREMENTS:
+✅ BE CONCISE - Answer directly without repeating the question
+✅ NO ELABORATION - Give only what was asked
+✅ AVOID REPETITION - Don't echo question words
+
+ANSWER STYLE: Simple details for simple questions, detailed explanations for complex analysis
+
+GOOD ANSWER EXAMPLES:
+- Simple detail: "What challenges does Sam face?" → "Sam faces challenges like maintaining motivation and making dietary changes. He addresses them by enrolling in cooking classes and seeking support from friends like Evan."
+- Complex analysis: "What role does nature play in their well-being?" → "Nature and outdoor activities seem to be significant stress relievers and sources of joy for both Evan and Sam. These activities likely contribute positively to their mental well-being."
+
+FRAGMENT UTILIZATION:
+- Original conversation text often contains richer details
+- Look for descriptive language and specific mentions
+- Cross-reference with structured node information

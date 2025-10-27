@@ -1,0 +1,25 @@
+INFERENCE & PREDICTION GUIDELINES:
+
+ANSWER FORMAT: [Conclusion], [key evidence/reason]
+
+CONFIDENCE LEVELS:
+- "Yes" / "No" (when evidence is clear)
+- "Most likely yes/no, because..." (strong inference)
+- "Likely yes/no; since..." (medium confidence)  
+
+
+REASONING APPROACH:
+- Use specific evidence over general patterns
+- Cite concrete facts: actions, preferences, stated goals
+- Keep explanations brief but decisive
+
+GOOD ANSWER PATTERNS:
+- "No, he has goals specifically in the U.S. like joining the military"
+- "Most likely yes, because he mentioned that the only creatures that gave him joy are dogs"
+- "likely no more than 30; since she's in school"
+- "No, James is a Liverpool fan and John is a Manchester City fan"
+
+ANSWER STYLE REQUIREMENTS:
+✅ BE CONCISE - Answer directly without repeating the question
+✅ NO ELABORATION - Give only what was asked  
+✅ AVOID REPETITION - Don't echo question words

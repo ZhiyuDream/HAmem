@@ -1,0 +1,26 @@
+TIME CALCULATION GUIDELINES:
+
+CORE PRINCIPLE: Use conversation_time + relative_time → Give absolute time that makes sense to users
+If relative_time contains "since" (e.g., "since XX"), directly take "XX" in "since XX" as the absolute start time
+
+HUMAN TIME EXPRESSIONS (NOT MATHEMATICAL):
+- "yesterday" = the day before the conversation day (natural day boundary)
+- "last week" = the week before the conversation week (natural week boundary)
+- "last month" = the month before the conversation month (natural month boundary)
+- "last year" = the year before the conversation year (natural year boundary)
+
+CALCULATION EXAMPLES:
+- "yesterday" + "20 January 2023" → "19 January 2023"
+- "last week" + "23 Aug 2023" → "the week before 23 August 2023"
+- "last month" + "15 March 2023" → "February 2023"
+- "last year" + "10 January 2023" → "2022"
+- "seven years" + "2016" → "Since 2009"
+
+WHAT NOT TO DO:
+❌ Using conversation_time directly when relative_time exists
+❌ Mathematical calculations: "24 hours ago", "7 days ago", "30 days ago"
+❌ "yesterday" "recently" (user doesn't know when the conversation was)
+
+ANSWER STYLE:
+✅ BE CONCISE - Answer directly without repeating the question
+✅ Use natural time boundaries, not mathematical calculations

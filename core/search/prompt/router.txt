@@ -1,0 +1,18 @@
+Question: {query}
+
+Select the best module(only one!):
+- time_handling (for when/time questions, dates, "when did", "what time", "which day", "how long ago","How many days")
+- opinion_sentiment (for feelings/opinions)  
+- inference_prediction (for predictions/reasoning)
+- state_analysis (for "currently doing", "now", "recent status")
+- detail_extraction (for "what did X do after Y", "how did X do Z", specific event details)
+
+
+Key distinctions:
+- "When did X happen?" = time_handling (time calculation needed)
+- "What did X do after Y?" = detail_extraction (need to read event fragments)
+- "What is X currently doing?" = state_analysis (current status)
+- "What happened during X?" = detail_extraction (event details)
+
+Return only valid JSON:
+{{"modules": ["selected_module"], "reasoning": "why"}}

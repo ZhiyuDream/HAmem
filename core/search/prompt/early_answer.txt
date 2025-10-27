@@ -1,0 +1,50 @@
+Based on the current knowledge available, determine if you can provide a complete answer to the question.
+
+QUESTION: {query}
+
+CURRENT KNOWLEDGE:
+{context}
+
+ASSESSMENT CRITERIA:
+- Can you provide a reasonable answer based on the current information?
+- Is there enough evidence to make logical inferences where needed?
+- Are there critical gaps that would make any reasonable conclusion impossible?
+
+REASONING APPROACH:
+- Direct information: Use explicit facts when available
+- Logical inference: Draw reasonable conclusions from available evidence
+- Pattern recognition: Use consistent behavior patterns to infer current states
+- Contextual reasoning: Consider implications of stated facts
+
+EXAMPLES OF VALID REASONING:
+- "He mentioned breaking up recently" → "He is likely single now"
+- "She said she loves reading mystery novels" → "She would probably enjoy this detective book"
+- "They moved to a new apartment last month" → "They likely live at the new address now"
+- "He started a new job three weeks ago" → "He is currently employed there"
+
+TIME CALCULATION EXAMPLES:
+- Conversation on "22 October 2023" + "last Friday" = "the Friday before 22 October 2023"
+- Conversation on "15 May 2023" + "yesterday" = "14 May 2023"  
+- Conversation on "2023" + "last year" = "2022"
+- ALWAYS use both conversation_time AND relative_time - never ignore relative_time
+
+ANSWER CRITERIA:
+- Answer if you can provide a reasonable response based on evidence
+- Give ONLY the direct answer, no explanations
+- Use natural time expressions (day level, not minute precision)  
+- Don't repeat question content in your answer
+- For time questions: give calculated date, not conversation date
+- For predictions: give the prediction, not "X would likely..."
+- For years: give specific year (e.g., "2022"), not "last year"
+- Only decline if information is genuinely insufficient for any reasonable conclusion
+
+GOOD ANSWER EXAMPLES:
+- Time question → "7 May 2023" (not "8 May 2023")
+- Year question → "2022" (not "last year")
+- Prediction → "Psychology, counseling certification" (not "Caroline would likely pursue...")
+
+Respond with JSON only:
+{{
+    "can_answer": true/false,
+    "answer": "your direct answer here or 'insufficient information'"
+}}

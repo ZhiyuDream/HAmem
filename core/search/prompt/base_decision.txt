@@ -1,0 +1,30 @@
+Analyze recalled nodes and decide on information retrieval strategy.
+
+QUESTION: {query}
+
+RECALLED NODES:
+{recalled_context}
+
+CANDIDATES:
+{candidate_context}
+
+FRAGMENTS:
+{fragment_info}
+
+TASKS:
+1. Select the best specialized module for answering the question:
+   - time_handling (for when/time questions, dates, "when did", "what time", "which day", "how long ago", "How many days")
+   - opinion_sentiment (for feelings/opinions)  
+   - inference_prediction (for predictions/reasoning)
+   - state_analysis (for "currently doing", "now", "recent status")
+   - detail_extraction (for "what did X do after Y", "how did X do Z", specific event details)
+
+2. Assess if recalled nodes contain sufficient information for the question
+
+JSON Response:
+{{
+    "selected_module": "time_handling",
+    "can_answer_early": true/false,
+    "reasoning": "Brief analysis explaining the decision"
+}}
+

@@ -1,0 +1,61 @@
+Based on the knowledge graph information below, provide a precise answer to the question.
+When verifying relevance, ensure the retrieved information refers to the exact concept mentioned in the question. 
+Do NOT use data about a different term that merely looks or sounds similar (for example, "pineapple" is NOT the same as "apple"). 
+Only use information that is directly and reliably related to the specified topic. 
+If such information is unavailable, respond with "Insufficient information" instead of forcing an answer.
+
+CORE PRINCIPLES:
+1. Be concise and direct - answer the question, don't repeat it
+2. Use specific details when available
+3. Focus on what you DO know, not what you don't know
+4. Apply reasonable inference when direct information isn't available
+5. Connect related facts logically (e.g., "broke up" implies "single")
+6. Handle conflicting information by prioritizing the most recent data:
+   - If nodes have conversation_time, use the latest timestamp
+   - If no timestamps, use the highest node ID number (newer nodes have higher IDs)
+   - Always prefer the most recent information when conflicts exist
+7. Verify information relevance before answering:
+   - Ensure retrieved information directly addresses the question asked
+   - Do NOT force an answer using similar but irrelevant information
+   - If context does not match the question, respond with "Insufficient information" or clarify what information is available vs. what was asked
+
+QUESTION: {query}
+
+KNOWLEDGE GRAPH INFORMATION:
+{context}
+
+
+ANSWER STYLE REQUIREMENTS:
+- Match answer complexity to question complexity
+- Simple facts: single words/phrases ("Colombia", "beach", "Christmas")
+- Judgments: conclusion + brief reason ("Yes; he wants to grow his fanbase")
+- Complex analysis: detailed explanation when truly needed
+- Don't repeat the question content in your answer
+
+NODE TYPES GUIDE:
+- EVENT: Actions, activities, happenings with time/place  (READ FRAGMENTS for details!)
+- OPINION: Feelings, attitudes, thoughts with sentiment
+- STATE: Current status, ongoing situations (often needs EVENT context)
+- CONTEXT: Environmental/background information (supporting info only)
+- ENTITY: People, objects, basic facts
+
+INFORMATION PRIORITY:
+1. EVENT nodes + their fragments (concrete actions, detailed descriptions)
+2. ENTITY nodes (direct facts about people/objects)
+3. OPINION nodes (for sentiment questions)
+4. STATE nodes as supporting context
+5. CONTEXT nodes as background only
+
+RESPONSE FORMAT:
+{{
+    "reason": "brief explanation of sources used",
+    "answer": "precise, direct answer"
+}}
+    
+
+ANSWER EXAMPLES:
+- Direct fact: "Becoming Nicole"
+- Time (natural): "8 May 2023" (not "1:56 pm on 8 May 2023")
+- Time (descriptive): "the week beofre 8 May 2023" 
+- Opinion: "positive" (not "Caroline feels positive about...")
+- Inference: "single" (not "He is likely single now because...")
