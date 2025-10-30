@@ -1,7 +1,7 @@
 """
-QA System主类
+QA System main class
 
-协调召回、扩展、路由和答案生成的完整流程
+Coordinates recall, expansion, routing, and answer generation
 """
 
 import os
@@ -15,13 +15,11 @@ from .answer import AnswerGenerator
 
 class QASystem:
     """
-    问答系统主类
-    
-    完整的QA流程：
-    1. 初始召回（FAISS）
-    2. 智能扩展（LLM决策 + 图遍历）
-    3. 问题路由（LLM）
-    4. 答案生成（LLM）
+    End-to-end QA pipeline:
+    1. Initial recall (FAISS)
+    2. Intelligent expansion (LLM decision + graph traversal)
+    3. Question routing (LLM)
+    4. Answer generation (LLM)
     """
     
     def __init__(
@@ -34,11 +32,11 @@ class QASystem:
     ):
         """
         Args:
-            cache: UnifiedCache实例（包含所有embedding和FAISS索引）
-            storage: Storage实例
-            llm_client: LLM客户端
-            namespace: 命名空间
-            max_hops: 最多扩展hop数
+            cache: UnifiedCache (embeddings + FAISS indexes)
+            storage: Storage instance
+            llm_client: LLM client
+            namespace: Namespace
+            max_hops: Max expansion hops
         """
         self.cache = cache
         self.storage = storage
@@ -46,7 +44,7 @@ class QASystem:
         self.namespace = namespace
         self.max_hops = max_hops
         
-        # 初始化各个子模块
+        # Initialize submodules
         self.recall = SearchRecall(cache, storage)
         self.expansion = GraphExpansion(storage, cache)
         self.router = QuestionRouter(llm_client)
@@ -54,23 +52,11 @@ class QASystem:
     
     def answer_question(self, question: str) -> Dict[str, Any]:
         """
-        回答问题（完整流程）
-        
-        正确流程：召回 → 判断 → 尝试回答 → (成功返回 / 失败扩展) → 循环
-        
-        Args:
-            question: 用户问题
-        
-        Returns:
-            {
-                'question': question,
-                'answer': answer,
-                'reason': reason,
-                'stats': {统计信息}
-            }
+        Answer a question via full pipeline.
+        Flow: Recall → Decide → Try answer → (Return or Expand) → Loop
         """
         print(f"\n{'='*60}")
-        print(f"❓ 问题: {question}")
+        print(f"❓ Question: {question}")
         print(f"{'='*60}")
         
         stats = {
@@ -80,15 +66,15 @@ class QASystem:
             'hops': 0
         }
         
-        # 阶段1: 初始召回
-        print(f"\n📍 阶段1: 初始召回")
+        # Stage 1: Initial recall
+        print(f"\n📍 Stage 1: Initial recall")
         recalled = self.recall.multi_layer_recall(question)
         
         current_nodes = recalled['layer1'] + recalled['layer2'] + recalled['layer3']
         stats['recalled_nodes'] = len(current_nodes)
         
-        # 输出召回节点的ID列表
-        print(f"\n📋 召回节点列表:")
+        # Show recalled node IDs
+        print(f"\n📋 Recalled node IDs:")
         print(f"  Layer1: {[n['id'] for n in recalled['layer1'][:10]]}" + 
               (f" ... (+{len(recalled['layer1'])-10})" if len(recalled['layer1']) > 10 else ""))
         print(f"  Layer2: {[n['id'] for n in recalled['layer2'][:10]]}" + 
@@ -99,8 +85,8 @@ class QASystem:
         all_edges = []
         all_fragments = []
         
-        # 阶段2: 多跳扩展循环
-        print(f"\n📍 阶段2: 智能决策与扩展")
+        # Stage 2: Multi-hop expansion loop
+        print(f"\n📍 Stage 2: Decision & Expansion")
         
         # 存储选定的模块（在第一次决策时确定）
         selected_modules = None
@@ -108,7 +94,7 @@ class QASystem:
         for hop in range(self.max_hops):
             print(f"\n🔄 Hop {hop + 1}/{self.max_hops}")
             
-            # 2.1: 智能决策（判断信息充分度、是否需要扩展）
+            # 2.1: Decision (sufficiency, need to expand)
             candidates, connecting_edges = self.expansion.find_candidates(
                 current_node_ids=[n['id'] for n in current_nodes],
                 max_candidates=50
@@ -122,29 +108,29 @@ class QASystem:
             )
             stats['llm_calls'] += 1
             
-            # 在第一次决策时获取选定的模块
+            # Select modules on first decision
             if selected_modules is None:
                 selected_modules = [decision.get('selected_module', 'detail_extraction')]
                 print(f"  🎯 选择模块: {selected_modules}")
             
-            # 不进行节点筛选，使用所有召回的节点
+            # Use all recalled nodes without filtering
             can_answer_early = decision.get('can_answer_early', False)
             information_sufficiency = decision.get('information_sufficiency', 'insufficient')
             
-            print(f"  📊 信息充分度: {information_sufficiency}")
-            print(f"  📊 使用节点数: {len(current_nodes)}（无筛选）")
+            print(f"  📊 Information sufficiency: {information_sufficiency}")
+            print(f"  📊 Nodes used: {len(current_nodes)} (no filtering)")
             print(f"  📊 can_answer_early: {can_answer_early}")
             
-            # 2.2: 如果判断可以回答，尝试生成答案
+            # 2.2: If sufficient, try to answer
             if can_answer_early:
-                print(f"  🚀 尝试生成答案...")
+                print(f"  🚀 Attempting to generate answer...")
                 
-                # 获取fragments
+                # Get fragments
                 all_fragments = self.recall.get_fragments_by_nodes(
                     [n['id'] for n in current_nodes]
                 )
                 
-                # 构建context
+                # Build context
                 context = {
                     'layer1': [n for n in current_nodes if n.get('layer') == 1],
                     'layer2': [n for n in current_nodes if n.get('layer') == 2],
@@ -153,21 +139,21 @@ class QASystem:
                     'fragments': all_fragments
                 }
                 
-                # 尝试回答（使用specialized modules）
+                # Try to answer (specialized modules)
                 answer_result = self.answer_generator.try_answer(question, context)
                 stats['llm_calls'] += 1
                 
-                # 直接返回LLM的答案（信任LLM的判断）
-                print(f"  ✅ 答案生成成功！")
+                # Return LLM answer directly
+                print(f"  ✅ Answer generated successfully!")
                 
                 stats['hops'] = hop + 1
                 
                 print(f"\n{'='*60}")
-                print(f"✅ 问答完成（Hop {hop + 1}提前返回）")
-                print(f"📊 统计: {stats['llm_calls']}次LLM调用, "
-                      f"{stats['recalled_nodes']}个召回, "
-                      f"{stats['expanded_nodes']}个扩展, "
-                      f"{stats['hops']}次hop")
+                print(f"✅ QA completed (early return at hop {hop + 1})")
+                print(f"📊 Stats: {stats['llm_calls']} LLM calls, "
+                      f"{stats['recalled_nodes']} recalled, "
+                      f"{stats['expanded_nodes']} expanded, "
+                      f"{stats['hops']} hops")
                 print(f"{'='*60}")
                 
                 return {
@@ -178,30 +164,30 @@ class QASystem:
                     'stats': stats
                 }
             
-            # 2.3: 信息不足，需要扩展
+            # 2.3: Insufficient → expand
             should_expand = decision.get('should_expand', False)
             nodes_to_expand = decision.get('nodes_to_expand', [])
             
             if not should_expand or not nodes_to_expand:
-                print(f"  ⚠️  不需要扩展，停止循环")
+                print(f"  ⚠️  No expansion needed, stop loop")
                 break
             
             if not candidates:
-                print(f"  ⚠️  无候选节点可扩展，停止")
+                print(f"  ⚠️  No candidates to expand, stop")
                 break
             
-            # 执行扩展
-            print(f"  🔗 扩展 {len(nodes_to_expand)} 个节点...")
+            # Execute expansion
+            print(f"  🔗 Expanding {len(nodes_to_expand)} nodes...")
             expanded_nodes, expanded_edges = self.expansion.expand_nodes(
                 nodes_to_expand,
                 max_neighbors=20
             )
             
             if not expanded_nodes:
-                print(f"  ⚠️  扩展无新节点，停止")
+                print(f"  ⚠️  Expansion yielded no new nodes, stop")
                 break
             
-            # 更新节点集合
+            # Update node set
             old_node_ids = {n['id'] for n in current_nodes}
             new_nodes = [n for n in expanded_nodes if n['id'] not in old_node_ids]
             
@@ -210,14 +196,14 @@ class QASystem:
             stats['expanded_nodes'] += len(new_nodes)
             stats['hops'] = hop + 1
             
-            print(f"  ✅ 扩展了 {len(new_nodes)} 个新节点")
+            print(f"  ✅ Expanded {len(new_nodes)} new nodes")
             if new_nodes:
                 new_node_ids = [n['id'] for n in new_nodes[:10]]
-                print(f"     扩展节点: {new_node_ids}" + 
+                print(f"     Expanded node IDs: {new_node_ids}" + 
                       (f" ... (+{len(new_nodes)-10})" if len(new_nodes) > 10 else ""))
         
-        # 阶段3: 最终答案生成（如果循环结束仍未返回）
-        print(f"\n📍 阶段3: 最终答案生成")
+        # Stage 3: Final answer generation
+        print(f"\n📍 Stage 3: Final answer generation")
         
         all_fragments = self.recall.get_fragments_by_nodes(
             [n['id'] for n in current_nodes]
@@ -231,25 +217,25 @@ class QASystem:
             'fragments': all_fragments
         }
         
-        # 最终生成答案（使用specialized modules）
-        print(f"\n💬 生成答案...")
+        # Final generation (specialized modules)
+        print(f"\n💬 Generating answer...")
         
         # 使用之前选定的模块（如果没有则使用默认模块）
         if selected_modules is None:
             selected_modules = ['detail_extraction']
-            print(f"  🎯 使用默认模块: {selected_modules}")
+            print(f"  🎯 Using default modules: {selected_modules}")
         else:
-            print(f"  🎯 使用选定模块: {selected_modules}")
+            print(f"  🎯 Using selected modules: {selected_modules}")
         
         answer_result = self.answer_generator.generate(question, context, selected_modules)
         stats['llm_calls'] += 1
         
         print(f"\n{'='*60}")
-        print(f"✅ 问答完成（最终生成）")
-        print(f"📊 统计: {stats['llm_calls']}次LLM调用, "
-              f"{stats['recalled_nodes']}个召回, "
-              f"{stats['expanded_nodes']}个扩展, "
-              f"{stats['hops']}次hop")
+        print(f"✅ QA completed (final generation)")
+        print(f"📊 Stats: {stats['llm_calls']} LLM calls, "
+              f"{stats['recalled_nodes']} recalled, "
+              f"{stats['expanded_nodes']} expanded, "
+              f"{stats['hops']} hops")
         print(f"{'='*60}")
         
         return {
@@ -268,16 +254,7 @@ class QASystem:
         edges: List[Dict]
     ) -> Dict[str, Any]:
         """
-        LLM决策：筛选节点、是否扩展、扩展目标
-        
-        Args:
-            question: 用户问题
-            current_nodes: 当前已有节点
-            candidates: 候选节点
-            edges: 连接边
-        
-        Returns:
-            决策结果
+        LLM decision: node filtering, whether to expand, and targets
         """
         print(f"  🤖 调用LLM进行扩展决策...")
         
@@ -309,7 +286,7 @@ class QASystem:
         edges: List[Dict]
     ) -> str:
         """
-        构建决策prompt（使用base_decision.txt）
+        Build decision prompt (using base_decision.txt)
         """
         # 加载base_decision prompt
         prompt_file = os.path.join(
@@ -319,7 +296,7 @@ class QASystem:
         )
         
         if not os.path.exists(prompt_file):
-            print(f"  ⚠️  决策prompt不存在，使用简化版")
+            print(f"  ⚠️  Decision prompt not found, using simplified version")
             return self._build_simple_decision_prompt(question, current_nodes, candidates)
         
         with open(prompt_file, 'r', encoding='utf-8') as f:
@@ -342,9 +319,9 @@ class QASystem:
         )
     
     def _format_nodes_for_prompt(self, nodes: List[Dict], max_nodes: int = 30) -> str:
-        """格式化节点为prompt字符串"""
+        """Format nodes as prompt string"""
         if not nodes:
-            return "  (无节点)"
+            return "  (no nodes)"
         
         result = ""
         for node in nodes[:max_nodes]:
@@ -354,7 +331,7 @@ class QASystem:
             result += f"  - {node_id} ({node_type}): {content}...\n"
         
         if len(nodes) > max_nodes:
-            result += f"  ... (还有 {len(nodes) - max_nodes} 个节点未显示)\n"
+            result += f"  ... ({len(nodes) - max_nodes} more nodes not shown)\n"
         
         return result
     
@@ -364,7 +341,7 @@ class QASystem:
         current_nodes: List[Dict],
         candidates: List[Dict]
     ) -> str:
-        """简化版决策prompt（作为后备）"""
+        """Simplified decision prompt (fallback)"""
         current_str = self._format_nodes_for_prompt(current_nodes, 20)
         candidates_str = self._format_nodes_for_prompt(candidates, 30)
         
@@ -405,7 +382,7 @@ JSON Response:
         candidates: List[Dict]
     ) -> Dict[str, Any]:
         """
-        解析LLM的决策结果
+        Parse LLM decision JSON
         """
         default_result = {
             'selected_module': 'detail_extraction',

@@ -1,128 +1,128 @@
-# HAmem 开源版本
+# HAmem Open Source Version
 
-## 项目历史记录
+## Project History
 
-### 2024-10-27: 准备开源版本
+### 2024-10-27: Open Source Preparation
 
-**用户需求**: 将HAmem项目开源到GitHub，只上传核心文件
+**Requirement**: Open source HAmem to GitHub with core files only
 
-**执行方案**:
-1. **分析项目结构** - 确定需要上传的文件范围
-   - ✅ `core/` 目录 - 核心系统代码
-   - ✅ `config.py` - 配置管理
-   - ✅ `main.py` - 主入口
-   - ✅ `README.md` - 项目说明
+**Plan**:
+1. **Analyze project structure** - Define the upload scope
+   - ✅ `core/` - Core system code
+   - ✅ `config.py` - Configuration
+   - ✅ `main.py` - Entry point
+   - ✅ `README.md` - Project documentation
 
-2. **创建开源版本目录** - `HAmem-open-source/`
-   - ✅ 复制核心文件到新目录
-   - ✅ 修改README.md适配开源版本
-   - ✅ 创建requirements.txt
-   - ✅ 创建.gitignore文件
+2. **Create open-source directory** - `HAmem-open-source/`
+   - ✅ Copy core files into the new directory
+   - ✅ Adapt README.md for the open-source version
+   - ✅ Add requirements.txt
+   - ✅ Add .gitignore
 
-3. **文件结构优化**
-   - ✅ 移除实验性代码引用
-   - ✅ 简化README内容
-   - ✅ 添加标准开源项目文件
+3. **Structure cleanup**
+   - ✅ Remove experimental code references
+   - ✅ Simplify README content
+   - ✅ Add standard open-source files
 
-**输出结果**:
+**Output**:
 - 📁 `/home/zhiyu_zheng/DCL/Others/HAmem-open-source/`
-- 📄 包含: `core/`, `config.py`, `main.py`, `README.md`, `requirements.txt`, `.gitignore`
+- 📄 Includes: `core/`, `config.py`, `main.py`, `README.md`, `requirements.txt`, `.gitignore`
 
-**下一步**: 提供GitHub上传指导
+**Next**: Provide GitHub upload guidance
 
 ---
 
-### 2024-10-27: Embedding调用优化
+### 2024-10-27: Embedding Call Optimization
 
-**问题**: embedding被调用4次，期望只有1次
+**Issue**: Embedding was called 4 times; expected 1
 
-**根本原因**: 流水线问题 - 预生成未完成就启动并行搜索
+**Root Cause**: Pipeline timing — parallel search began before pre-generation finished
 
-**解决方案**:
-1. **预生成embedding** - 确保缓存建立
-2. **缓存验证** - 检查缓存是否真正建立  
-3. **时序保证** - 预生成完成后再启动并行搜索
+**Solution**:
+1. **Pre-generate embedding** — ensure cache is populated
+2. **Cache verification** — confirm cache is ready  
+3. **Ordering guarantee** — start parallel searches after pre-generation
 
-**修改文件**:
+**Files Modified**:
 - `HAmem/experiment/run_longmemeval_qa.py`
 - `HAmem/experiment/run_longmemeval_qa_gpt.py`
 - `HAmem/core/search/recall.py`
 
-**预期效果**: embedding调用从4次减少到1次
+**Expected Result**: Reduce embedding calls from 4 to 1
 
 ---
 
-### 2024-10-27: GPT-4.1-mini版本创建
+### 2024-10-27: GPT-4.1-mini Variant
 
-**用户需求**: 创建使用GPT-4.1-mini的版本
+**Requirement**: Create a version using GPT-4.1-mini
 
-**执行方案**:
-1. **复制原始脚本** - `run_longmemeval_qa.py` → `run_longmemeval_qa_gpt.py`
-2. **修改LLM配置** - 强制使用OpenAI GPT-4.1-mini
-3. **同步优化** - 应用embedding优化
+**Plan**:
+1. **Duplicate script** — `run_longmemeval_qa.py` → `run_longmemeval_qa_gpt.py`
+2. **Update LLM config** — force OpenAI GPT-4.1-mini
+3. **Sync optimization** — apply embedding optimization
 
-**修改内容**:
-- 强制`provider='openai'`, `model='gpt-4.1-mini'`
-- 更新输出文件名和消息
-- 添加模型信息到输出JSON
+**Changes**:
+- Force `provider='openai'`, `model='gpt-4.1-mini'`
+- Update output filenames and messages
+- Add model info to output JSON
 
-**输出**: `HAmem/experiment/run_longmemeval_qa_gpt.py`
+**Output**: `HAmem/experiment/run_longmemeval_qa_gpt.py`
 
 ---
 
-### 2024-10-27: Zep本地部署支持
+### 2024-10-27: Zep Local Deployment Support
 
-**用户需求**: 使用本地Zep而不是Zep Cloud API
+**Requirement**: Use local Zep instead of Zep Cloud API
 
-**发现**: Zep仓库包含Community Edition本地部署方案
+**Finding**: Zep repo includes a Community Edition local deployment
 
-**解决方案**:
-1. **发现本地部署** - `legacy/`目录包含完整配置
-2. **创建本地版本** - `zep_locomo_ingestion_local.py`
-3. **修改配置** - 使用本地API地址和密钥
+**Solution**:
+1. **Identify local deployment** — `legacy/` contains full configs
+2. **Create local script** — `zep_locomo_ingestion_local.py`
+3. **Update config** — use local API URL and key
 
-**部署组件**:
-- Zep服务: `http://localhost:8000`
+**Components**:
+- Zep: `http://localhost:8000`
 - PostgreSQL: `localhost:5432`
 - Graphiti: `http://localhost:8003`
 - Neo4j: `http://localhost:7474`
 
-**启动命令**: `docker-compose -f docker-compose.ce.yaml up -d`
+**Startup**: `docker-compose -f docker-compose.ce.yaml up -d`
 
 ---
 
-### 2024-10-27: LOCOMO数据集分析
+### 2024-10-27: LOCOMO Dataset Analysis
 
-**用户需求**: 分析Zep在LOCOMO数据集上的LLM调用次数
+**Requirement**: Analyze LLM call counts on LOCOMO
 
-**分析结果**:
-- **LLM调用**: 2次 (回答生成 + 评分)
-- **Embedding调用**: 1次 (问题embedding)
-- **平均响应时间**: 2.3秒
-- **P90时间**: 3.1秒
-- **P95时间**: 3.8秒
+**Results**:
+- **LLM Calls**: 2 (Answer + Grading)
+- **Embedding Calls**: 1 (Question embedding)
+- **Avg Response Time**: 2.3s
+- **P90**: 3.1s
+- **P95**: 3.8s
 
-**调用流程**:
-1. 接收问题 → 2. 生成embedding → 3. 图搜索 → 4. 生成回答 → 5. LLM评分
+**Pipeline**:
+1. Receive question → 2. Generate embedding → 3. Graph search → 4. Answer → 5. Grade
 
-**性能表现**: 高效且稳定
+**Performance**: Efficient and stable
 
 ---
 
-### 2024-10-27: 项目初始化
+### 2024-10-27: Project Initialization
 
-**项目目标**: 构建高性能的分层记忆系统
+**Goal**: Build a high-performance hierarchical memory system
 
-**核心特性**:
-- 分层记忆构建 (Layer1-3)
-- 智能检索和问答
-- 批量处理优化
-- 多级缓存策略
+**Key Features**:
+- Hierarchical memory construction (Layer1-3)
+- Intelligent retrieval and QA
+- Batch processing optimization
+- Multi-level caching
 
-**技术栈**:
+**Tech Stack**:
 - OpenAI API (Embedding)
 - DeepSeek API (LLM)
-- FAISS (向量搜索)
-- 异步处理
+- FAISS (Vector search)
+- Async processing
 
-**架构设计**: 极简主义 + 高性能
+**Architecture**: Minimalism + High performance

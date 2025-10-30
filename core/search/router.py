@@ -1,7 +1,7 @@
 """
-Question Router模块
+Question Router module
 
-使用LLM路由问题到合适的答案生成模块
+Use LLM to route questions to appropriate answer modules
 """
 
 import json
@@ -11,29 +11,21 @@ from core.infrastructure import LLMClient, parse_llm_json
 
 class QuestionRouter:
     """
-    问题路由模块
-    
-    使用LLM分析问题类型，选择合适的specialized modules
+    Analyze question type and select specialized modules
     """
     
     def __init__(self, llm_client: LLMClient):
         """
         Args:
-            llm_client: LLM客户端
+            llm_client: LLM client
         """
         self.llm_client = llm_client
     
     def route(self, question: str) -> List[str]:
         """
-        路由问题到合适的模块
-        
-        Args:
-            question: 用户问题
-        
-        Returns:
-            选择的模块列表 ['time_handling', 'opinion_sentiment', ...]
+        Route the question to best-fit modules
         """
-        print(f"\n🧭 路由问题: '{question[:50]}...'")
+        print(f"\n🧭 Routing question: '{question[:50]}...'")
         
         # 构建路由prompt
         prompt = self._build_router_prompt(question)
@@ -41,32 +33,26 @@ class QuestionRouter:
         # 调用LLM
         response = self.llm_client.call_llm(prompt, provider="deepseek")
         
-        # 调试：显示原始响应
-        print(f"  🔍 LLM原始响应: {response[:200]}...")
+        # Debug: raw response
+        print(f"  🔍 LLM raw response: {response[:200]}...")
         
-        # 解析结果
+        # Parse result
         result = self._parse_router_response(response)
         
-        # 调试：显示解析结果
-        print(f"  🔍 解析结果: {result}")
+        # Debug: parsed result
+        print(f"  🔍 Parsed: {result}")
         
         modules = result.get('selected_modules', ['inference_prediction'])
         reasoning = result.get('reasoning', '')
         
-        print(f"  ✅ 选择模块: {modules}")
-        print(f"  💡 推理: {reasoning[:100]}...")
+        print(f"  ✅ Selected modules: {modules}")
+        print(f"  💡 Reasoning: {reasoning[:100]}...")
         
         return modules
     
     def _build_router_prompt(self, question: str) -> str:
         """
-        构建路由prompt
-        
-        Args:
-            question: 用户问题
-        
-        Returns:
-            prompt字符串
+        Build routing prompt
         """
         return f"""
 Analyze the question and route it to appropriate answer modules.
@@ -99,13 +85,7 @@ Now analyze and route the question:
     
     def _parse_router_response(self, response: str) -> Dict[str, Any]:
         """
-        解析LLM的路由结果
-        
-        Args:
-            response: LLM响应
-        
-        Returns:
-            解析后的结果
+        Parse LLM routing result
         """
         default_result = {
             'selected_modules': ['detail_extraction'],
@@ -121,7 +101,7 @@ Now analyze and route the question:
         if result is None:
             return default_result
         
-        # 验证modules
+        # Validate modules
         valid_modules = [
             'time_handling',
             'opinion_sentiment',
@@ -134,7 +114,7 @@ Now analyze and route the question:
         if not isinstance(selected, list) or not selected:
             selected = ['detail_extraction']
         
-        # 过滤无效模块
+        # Filter invalid modules
         selected = [m for m in selected if m in valid_modules]
         if not selected:
             selected = ['inference_prediction']

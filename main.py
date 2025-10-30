@@ -1,14 +1,14 @@
 """
-HAmem 主入口
+HAmem entry point
 
-提供简单的API接口
+Provides a simple public API
 """
 
 import os
 import sys
 from typing import Dict, Any, List
 
-# 添加当前目录到Python路径
+# Add current directory to Python path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import Config
@@ -27,7 +27,7 @@ class HAmem:
         self.config = config
         self.config.validate()
         
-        # 初始化核心组件
+        # Initialize core components
         self.memory_builder = MemoryBuilder(config)
         self.storage = StorageManager(config)
         self.retrieval_engine = RetrievalEngine(config)
@@ -39,17 +39,17 @@ class HAmem:
         
         print("🧠 Building memory...")
         
-        # 转换数据格式
+        # Convert input data format
         conversation = ConversationData.from_dict(conversation_data)
         
-        # 构建记忆
+        # Build memory
         result = self.memory_builder.build_memory(conversation)
         
         print(f"✅ Memory built: {result.total_fragments} fragments processed")
         return result.to_dict()
     
     def search_memory(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
-        """搜索记忆"""
+        """Search memory"""
         print(f"🔍 Searching memory for: {query}")
         
         results = self.retrieval_engine.search(query, top_k)
@@ -58,7 +58,7 @@ class HAmem:
         return [result.to_dict() for result in results]
     
     def ask_question(self, question: str) -> Dict[str, Any]:
-        """回答问题"""
+        """Answer a question"""
         print(f"❓ Answering question: {question}")
         
         answer = self.qa_system.answer_question(question)
@@ -67,7 +67,7 @@ class HAmem:
         return answer.to_dict()
     
     def get_stats(self) -> Dict[str, Any]:
-        """获取系统统计信息"""
+        """Get system stats"""
         return {
             'config': self.config.to_dict(),
             'cache_stats': self.memory_builder.embedding_manager.cache.get_cache_stats(),
@@ -76,11 +76,11 @@ class HAmem:
 
 
 def main():
-    """主函数 - 示例用法"""
+    """Main function - example usage"""
     print("🚀 HAmem - Hierarchical Memory System")
     print("=" * 50)
     
-    # 检查API密钥
+    # Check API keys
     config = Config()
     if not config.openai_api_key or not config.deepseek_api_key:
         print("❌ Please configure API keys in .env file or environment variables")
@@ -92,20 +92,20 @@ def main():
     print("   - OpenAI API: For embeddings")
     print("   - DeepSeek API: For LLM calls")
     
-    # 初始化HAmem
+    # Initialize HAmem
     try:
         hamem = HAmem()
     except Exception as e:
         print(f"❌ Failed to initialize HAmem: {e}")
         return
     
-    # 示例用法
+    # Example usage
     print("\n📝 Example usage:")
     print("hamem = HAmem()")
     print("result = hamem.build_memory(conversation_data)")
     print("answer = hamem.ask_question('What did we discuss?')")
     
-    # 显示配置
+    # Show configuration
     print(f"\n⚙️  Configuration:")
     stats = hamem.get_stats()
     print(f"  - LLM Model: {stats['config']['llm_model']} (DeepSeek)")
