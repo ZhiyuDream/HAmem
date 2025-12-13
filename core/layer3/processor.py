@@ -4,11 +4,12 @@ Layer3处理器
 协调聚类、提取和存储的完整流程
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from core.infrastructure import LLMClient, UnifiedCache
+from core.infrastructure.neo4j_client import Neo4jClient
 from .clustering import EventClusterer
 from .extractor import Layer3Extractor
-from .storage import Layer3Storage
+from .neo4j_storage import Layer3Neo4jStorage
 
 
 class Layer3Processor:
@@ -18,19 +19,27 @@ class Layer3Processor:
         self,
         llm_client: LLMClient,
         cache: UnifiedCache,
-        storage_dir: str = "storage",
+        neo4j_client: Optional[Neo4jClient] = None,
+        namespace: str = "default",
         layer2_threshold: int = 60,  # 累积60个Layer2节点触发分析
         similarity_threshold: float = 0.6,
-        min_cluster_size: int = 7  # 最小cluster大小
+        min_cluster_size: int = 7,  # 最小cluster大小
+        token_tracker=None
     ):
         self.clusterer = EventClusterer(
             cache, 
             similarity_threshold=similarity_threshold,
             min_cluster_size=min_cluster_size
         )
-        self.extractor = Layer3Extractor(llm_client)
-        self.storage = Layer3Storage(storage_dir)
+        self.extractor = Layer3Extractor(llm_client, token_tracker=token_tracker)
+        # 使用Neo4jStorage替代文件存储
+        if neo4j_client:
+            self.storage = Layer3Neo4jStorage(neo4j_client, namespace)
+        else:
+            self.storage = None  # 如果没有Neo4j客户端，storage为None（数据将通过统一写入）
         self.cache = cache
+        self.neo4j_client = neo4j_client
+        self.namespace = namespace
         
         self.layer2_threshold = layer2_threshold
         self.last_analyzed_layer2_count = 0  # 记录上次分析时的Layer2节点总数
@@ -93,7 +102,9 @@ class Layer3Processor:
             'clusters_created': 0,
             'patterns_created': 0,
             'preferences_created': 0,
-            'rules_created': 0
+            'rules_created': 0,
+            'created_nodes': [],  # 新增：返回创建的节点列表
+            'created_edges': []   # 新增：返回创建的边列表
         }
         
         # 1. 获取所有Layer2节点
@@ -159,7 +170,7 @@ class Layer3Processor:
                 cluster_contexts  # 只传入该cluster的contexts
             )
             
-            # 创建节点
+            # 创建节点（返回节点和边列表）
             cluster_stats = self._create_layer3_nodes(
                 extraction_result,
                 namespace,
@@ -167,8 +178,14 @@ class Layer3Processor:
             )
             
             # 累加统计
-            for key in stats:
+            for key in ['clusters_created', 'patterns_created', 'preferences_created', 'rules_created']:
                 stats[key] += cluster_stats.get(key, 0)
+            
+            # 收集创建的节点和边
+            if 'created_nodes' in cluster_stats:
+                stats['created_nodes'].extend(cluster_stats['created_nodes'])
+            if 'created_edges' in cluster_stats:
+                stats['created_edges'].extend(cluster_stats['created_edges'])
         
         # 更新计数器
         self.last_analyzed_layer2_count = current_layer2_count
@@ -186,7 +203,7 @@ class Layer3Processor:
         extraction_result: Dict[str, Any],
         namespace: str,
         cluster_events: List[Dict[str, Any]]
-    ) -> Dict[str, int]:
+    ) -> Dict[str, Any]:
         """
         创建Layer3节点
         
@@ -196,42 +213,55 @@ class Layer3Processor:
             cluster_events: 聚类的事件列表
         
         Returns:
-            统计信息
+            统计信息和创建的节点/边列表
         """
         stats = {
             'clusters_created': 0,
             'patterns_created': 0,
             'preferences_created': 0,
-            'rules_created': 0
+            'rules_created': 0,
+            'created_nodes': [],  # 新增：返回创建的节点列表
+            'created_edges': []   # 新增：返回创建的边列表
         }
         
         nodes_to_create = []
+        edges_to_create = []
         
         # 1. 创建事件聚类节点
+        current_cluster_id = None  # 初始化，供后续pattern/preference/behavior_rule连接使用
         event_cluster_data = extraction_result.get('event_cluster')
         if event_cluster_data:
             self.cluster_counter += 1
             cluster_id = f"cluster_{self.cluster_counter}"
+            current_cluster_id = cluster_id  # 保存cluster_id，供后续pattern/preference/behavior_rule连接使用
             
             cluster_node = {
                 "id": cluster_id,
+                "type": "event_cluster",  # 新增：明确节点类型
                 "content": event_cluster_data.get('description', ''),
                 "cluster_type": event_cluster_data.get('cluster_type'),
                 "participants": event_cluster_data.get('participants', []),
                 "time_span": event_cluster_data.get('time_span'),
                 "significance": event_cluster_data.get('significance'),
-                "layer": 3
+                "layer": 3,
+                "active": True
             }
             
             nodes_to_create.append(cluster_node)
             stats['clusters_created'] += 1
             
-            # 保存到storage
-            self.storage.save_event_cluster(cluster_node, namespace)
-            
-            # 创建cluster → event的连接边
+            # 收集cluster → event的连接边（不再直接写入storage）
             for event in cluster_events:
-                self.storage.create_cluster_event_edge(cluster_id, event.get('id'), namespace)
+                event_id = event.get('id')
+                if event_id:
+                    edges_to_create.append({
+                        "id": f"cluster_event_{cluster_id}_{event_id}",
+                        "source": cluster_id,
+                        "target": event_id,
+                        "type": "CONTAINS",
+                        "layer": 3,
+                        "active": True
+                    })
         
         # 2. 创建模式节点
         for pattern_data in extraction_result.get('patterns', []):
@@ -240,22 +270,41 @@ class Layer3Processor:
             
             pattern_node = {
                 "id": pattern_id,
+                "type": "pattern",  # 新增：明确节点类型
                 "person": pattern_data.get('person'),
                 "pattern_type": pattern_data.get('pattern_type'),
                 "content": pattern_data.get('description', ''),
-                "layer": 3
+                "layer": 3,
+                "active": True
             }
             
             nodes_to_create.append(pattern_node)
             stats['patterns_created'] += 1
             
-            # 保存到storage
-            self.storage.save_pattern(pattern_node, namespace)
-            
-            # 创建pattern → person的连接边
+            # 收集pattern → person的连接边（不再直接写入storage）
             person_name = pattern_data.get('person')
             if person_name:
-                self.storage.create_pattern_person_edge(pattern_id, person_name, namespace)
+                # 注意：person可能是实体名称，需要找到对应的entity_id
+                # 这里先创建边，entity_id会在memory.py中解析
+                edges_to_create.append({
+                    "id": f"pattern_person_{pattern_id}_{person_name}",
+                    "source": pattern_id,
+                    "target": person_name,  # 可能是名称，需要后续解析为entity_id
+                    "type": "RELATED_TO",
+                    "layer": 3,
+                    "active": True
+                })
+            
+            # 新增：event_cluster → pattern的连接边（通过cluster间接连接到event）
+            if current_cluster_id:
+                edges_to_create.append({
+                    "id": f"cluster_pattern_{current_cluster_id}_{pattern_id}",
+                    "source": current_cluster_id,
+                    "target": pattern_id,
+                    "type": "CONTAINS",
+                    "layer": 3,
+                    "active": True
+                })
         
         # 3. 创建偏好节点
         for pref_data in extraction_result.get('preferences', []):
@@ -264,22 +313,39 @@ class Layer3Processor:
             
             pref_node = {
                 "id": pref_id,
+                "type": "preference",  # 新增：明确节点类型
                 "person": pref_data.get('person'),
                 "category": pref_data.get('category'),
                 "content": pref_data.get('description', ''),
-                "layer": 3
+                "layer": 3,
+                "active": True
             }
             
             nodes_to_create.append(pref_node)
             stats['preferences_created'] += 1
             
-            # 保存到storage
-            self.storage.save_preference(pref_node, namespace)
-            
-            # 创建preference → person的连接边
+            # 收集preference → person的连接边（不再直接写入storage）
             person_name = pref_data.get('person')
             if person_name:
-                self.storage.create_pattern_person_edge(pref_id, person_name, namespace)
+                edges_to_create.append({
+                    "id": f"preference_person_{pref_id}_{person_name}",
+                    "source": pref_id,
+                    "target": person_name,  # 可能是名称，需要后续解析为entity_id
+                    "type": "RELATED_TO",
+                    "layer": 3,
+                    "active": True
+                })
+            
+            # 新增：event_cluster → preference的连接边（通过cluster间接连接到event）
+            if current_cluster_id:
+                edges_to_create.append({
+                    "id": f"cluster_preference_{current_cluster_id}_{pref_id}",
+                    "source": current_cluster_id,
+                    "target": pref_id,
+                    "type": "CONTAINS",
+                    "layer": 3,
+                    "active": True
+                })
         
         # 4. 创建行为规则节点
         for rule_data in extraction_result.get('behavior_rules', []):
@@ -288,27 +354,43 @@ class Layer3Processor:
             
             rule_node = {
                 "id": rule_id,
+                "type": "behavior_rule",  # 新增：明确节点类型
                 "person": rule_data.get('person'),
                 "rule_type": rule_data.get('rule_type'),
                 "content": rule_data.get('description', ''),
-                "layer": 3
+                "layer": 3,
+                "active": True
             }
             
             nodes_to_create.append(rule_node)
             stats['rules_created'] += 1
             
-            # 保存到storage
-            self.storage.save_behavior_rule(rule_node, namespace)
-            
-            # 创建rule → person的连接边
+            # 收集rule → person的连接边（不再直接写入storage）
             person_name = rule_data.get('person')
             if person_name:
-                self.storage.create_pattern_person_edge(rule_id, person_name, namespace)
+                edges_to_create.append({
+                    "id": f"rule_person_{rule_id}_{person_name}",
+                    "source": rule_id,
+                    "target": person_name,  # 可能是名称，需要后续解析为entity_id
+                    "type": "RELATED_TO",
+                    "layer": 3,
+                    "active": True
+                })
         
-        # 5. 批量添加到cache
-        if nodes_to_create:
-            print(f"  📦 批量添加{len(nodes_to_create)}个Layer3节点到cache...")
-            self.cache.batch_add_nodes(nodes_to_create)
+            # 新增：event_cluster → behavior_rule的连接边（通过cluster间接连接到event）
+            if current_cluster_id:
+                edges_to_create.append({
+                    "id": f"cluster_rule_{current_cluster_id}_{rule_id}",
+                    "source": current_cluster_id,
+                    "target": rule_id,
+                    "type": "CONTAINS",
+                    "layer": 3,
+                    "active": True
+                })
+        
+        # 5. 不直接写入storage，而是返回节点和边列表（供memory.py统一处理）
+        stats['created_nodes'] = nodes_to_create
+        stats['created_edges'] = edges_to_create
         
         return stats
 

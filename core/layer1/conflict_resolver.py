@@ -12,8 +12,10 @@ from core.infrastructure import LLMClient, parse_llm_json
 class Layer1ConflictResolver:
     """Layer1冲突解决器"""
     
-    def __init__(self, llm_client: LLMClient):
+    def __init__(self, llm_client: LLMClient, token_tracker=None, default_provider: str = "deepseek"):
         self.llm_client = llm_client
+        self.token_tracker = token_tracker  # Token统计收集器（可选）
+        self.default_provider = default_provider  # 默认LLM提供商
     
     def resolve_conflicts_batch(
         self,
@@ -90,7 +92,13 @@ class Layer1ConflictResolver:
         )
         
         # 调用LLM
-        response = self.llm_client.call_llm(prompt, provider="deepseek")
+        # 如果启用了token追踪，获取usage信息
+        if self.token_tracker:
+            response, usage = self.llm_client.call_llm(prompt, provider=self.default_provider, return_usage=True)
+            # 记录token使用情况
+            self.token_tracker.record_llm_call("layer1_conflict", usage, provider=self.default_provider, context=fragment.get('id'))
+        else:
+            response = self.llm_client.call_llm(prompt, provider=self.default_provider)
         
         # 解析决策
         decisions_with_conflict = self._parse_decisions(response)

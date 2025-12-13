@@ -13,20 +13,26 @@ from .prompt import build_layer2_extraction_prompt
 class Layer2Extractor:
     """Layer2时间线提取器"""
     
-    def __init__(self, llm_client: LLMClient):
+    def __init__(self, llm_client: LLMClient, default_provider: str = "deepseek", token_tracker=None):
         self.llm_client = llm_client
+        self.default_provider = default_provider
+        self.token_tracker = token_tracker  # Token统计收集器（可选）
     
     def extract_from_fragment(
         self, 
         fragment: Dict[str, Any],
-        layer1_entities: List[Dict[str, Any]]
+        layer1_entities: List[Dict[str, Any]],
+        existing_layer2_nodes: List[Dict[str, Any]] = None,
+        provider: str = None
     ) -> Dict[str, Any]:
         """
-        从fragment中提取时间线信息
+        从fragment中提取时间线信息（支持已有节点召回和关联）
         
         Args:
             fragment: fragment数据 {"id": "...", "content": "...", "time": "..."}
             layer1_entities: Layer1提取的实体列表
+            existing_layer2_nodes: 召回的已有Layer2节点列表（用于关联）
+            provider: LLM提供商
         
         Returns:
             提取结果 {"events": [...], "states": [...], "contexts": [...]}
@@ -38,17 +44,29 @@ class Layer2Extractor:
             if not fragment_text:
                 return {"events": [], "states": [], "contexts": []}
             
-            # 构建prompt
+            # 构建prompt（包含已有节点信息）
             prompt = build_layer2_extraction_prompt(
                 fragment_text, 
                 session_time,
-                layer1_entities
+                layer1_entities,
+                existing_layer2_nodes=existing_layer2_nodes
             )
             
             # 调用LLM
+            provider = provider or self.default_provider
+            # 如果启用了token追踪，获取usage信息
+            if self.token_tracker:
+                response, usage = self.llm_client.call_llm(
+                    prompt,
+                    provider=provider,
+                    return_usage=True
+                )
+                # 记录token使用情况
+                self.token_tracker.record_llm_call("layer2_extraction", usage, provider=provider, context=fragment.get('id'))
+            else:
             response = self.llm_client.call_llm(
                 prompt,
-                provider="deepseek"
+                    provider=provider
             )
             
             # 解析响应

@@ -13,8 +13,10 @@ from .prompt import build_pattern_analysis_prompt
 class Layer3Extractor:
     """Layer3模式提取器"""
     
-    def __init__(self, llm_client: LLMClient):
+    def __init__(self, llm_client: LLMClient, token_tracker=None, default_provider: str = "deepseek"):
         self.llm_client = llm_client
+        self.token_tracker = token_tracker  # Token统计收集器（可选）
+        self.default_provider = default_provider  # 默认LLM提供商
     
     def extract_patterns_from_cluster(
         self,
@@ -50,9 +52,19 @@ class Layer3Extractor:
             )
             
             # 调用LLM
+            # 如果启用了token追踪，获取usage信息
+            if self.token_tracker:
+                response, usage = self.llm_client.call_llm(
+                    prompt,
+                    provider=self.default_provider,
+                    return_usage=True
+                )
+                # 记录token使用情况
+                self.token_tracker.record_llm_call("layer3_pattern", usage, provider=self.default_provider)
+            else:
             response = self.llm_client.call_llm(
                 prompt,
-                provider="deepseek"
+                    provider=self.default_provider
             )
             
             # 解析响应

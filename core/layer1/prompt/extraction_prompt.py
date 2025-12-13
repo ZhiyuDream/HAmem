@@ -2,15 +2,36 @@
 Layer1实体和关系提取Prompt
 """
 
-def build_layer1_extraction_prompt(fragment_text: str) -> str:
+from typing import List, Dict, Any
+
+def build_layer1_extraction_prompt(fragment_text: str, existing_entities: List[Dict[str, Any]] = None) -> str:
     """
-    构建Layer1提取prompt（优化版v2）
+    构建Layer1提取prompt（支持已有实体召回和关联）
     
     Args:
         fragment_text: Fragment的对话内容
+        existing_entities: 召回的已有实体列表（用于关联和补充）
     
     Returns:
         提取prompt
+    """
+    # 格式化已有实体信息
+    existing_entities_section = ""
+    if existing_entities:
+        existing_entities_list = []
+        for entity in existing_entities:
+            entity_id = entity.get('id', 'unknown')
+            entity_name = entity.get('name', '')
+            entity_content = entity.get('content', '')
+            existing_entities_list.append(f"- ID: {entity_id}, Name: {entity_name}, Content: {entity_content}")
+        existing_entities_section = f"""
+# Existing Entities (recalled from previous fragments):
+{chr(10).join(existing_entities_list)}
+
+IMPORTANT: When extracting entities, you should:
+1. If a new entity is mentioned that matches an existing entity (same person/organization/place), use "update_existing" action to supplement the existing entity's information
+2. If a new entity is mentioned that should be linked to existing entities, use "link_to_existing" to establish relationships
+3. Only use "create_new" for completely new entities that don't match any existing ones
     """
     
     prompt = f"""
@@ -18,6 +39,7 @@ You are an expert in information extraction. Extract entities and relationships 
 
 # Input Fragment:
 {fragment_text}
+{existing_entities_section}
 
 # Extraction Requirements:
 
@@ -80,19 +102,51 @@ Return a JSON object with the following structure:
 {{
   "entities": [
     {{
-      "name": "Entity Name", 
-      "content": "Static description of the entity"
+      "name": "New Entity Name",
+      "content": "Static description of the entity",
+      "action": "create_new"
+    }},
+    {{
+      "name": "Existing Entity Name",
+      "content": "Updated description with new information from this fragment",
+      "action": "update_existing",
+      "existing_entity_id": "entity_1"
+    }},
+    {{
+      "name": "Another New Entity",
+      "content": "Description",
+      "action": "create_new",
+      "link_to_existing": [
+        {{
+          "existing_entity_id": "entity_2",
+          "relation_type": "works_at",
+          "relation_content": "works at the company"
+        }}
+      ]
     }}
   ],
   "relationships": [
     {{
-      "source": "Source Entity Name", 
-      "target": "Target Entity Name", 
-      "content": "Description of the relationship"
+      "source": "Entity A",
+      "target": "Entity B",
+      "content": "Relationship description",
+      "action": "create_new"
+    }},
+    {{
+      "source": "Entity A",
+      "target": "Entity B",
+      "content": "Updated relationship description",
+      "action": "update_existing",
+      "existing_relation_id": "edge_1"
     }}
   ]
 }}
 ```
+
+# Action Types:
+- "create_new": Create a new entity/relationship
+- "update_existing": Update an existing entity/relationship with new information from this fragment (use existing_entity_id or existing_relation_id)
+- "link_to_existing": For new entities that should be linked to existing entities (specify relation_type and relation_content)
 
 # Important Rules:
 1. Entity names in relationships MUST exactly match entity names in the entities list
@@ -100,6 +154,9 @@ Return a JSON object with the following structure:
 3. Avoid extracting temporary states or emotions as entity descriptions
 4. Be precise and concise in descriptions
 5. Extract all meaningful entities and relationships, but avoid over-segmentation
+6. When an entity matches an existing one, use "update_existing" to supplement information
+7. When a new entity should be linked to existing entities, use "link_to_existing" with proper relation_type
+8. Only create fragment-to-entity connections when there is a meaningful relationship (LLM should judge)
 
 Extract the information now:
 """

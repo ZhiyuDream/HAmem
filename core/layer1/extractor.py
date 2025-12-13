@@ -12,15 +12,24 @@ from core.infrastructure import LLMClient, parse_llm_json
 class Layer1Extractor:
     """Layer1实体提取器"""
     
-    def __init__(self, llm_client: LLMClient):
+    def __init__(self, llm_client: LLMClient, default_provider: str = "deepseek", token_tracker=None):
         self.llm_client = llm_client
+        self.default_provider = default_provider
+        self.token_tracker = token_tracker  # Token统计收集器（可选）
     
-    def extract_from_fragment(self, fragment: Dict[str, Any]) -> Dict[str, Any]:
+    def extract_from_fragment(
+        self, 
+        fragment: Dict[str, Any], 
+        existing_entities: List[Dict[str, Any]] = None,
+        provider: str = None
+    ) -> Dict[str, Any]:
         """
-        从fragment中提取实体和关系
+        从fragment中提取实体和关系（支持已有实体召回和关联）
         
         Args:
             fragment: fragment数据 {"id": "...", "content": "...", ...}
+            existing_entities: 召回的已有实体列表（用于关联和补充）
+            provider: LLM提供商
         
         Returns:
             提取结果 {"entities": [...], "relationships": [...]}
@@ -30,14 +39,25 @@ class Layer1Extractor:
             if not fragment_text:
                 return {"entities": [], "relationships": []}
             
-            # 构建prompt
+            # 构建prompt（包含已有实体信息）
             from .prompt import build_layer1_extraction_prompt
-            prompt = build_layer1_extraction_prompt(fragment_text)
+            prompt = build_layer1_extraction_prompt(fragment_text, existing_entities=existing_entities)
             
             # 调用LLM
+            provider = provider or self.default_provider
+            # 如果启用了token追踪，获取usage信息
+            if self.token_tracker:
+                response, usage = self.llm_client.call_llm(
+                    prompt, 
+                    provider=provider,
+                    return_usage=True
+                )
+                # 记录token使用情况
+                self.token_tracker.record_llm_call("layer1_extraction", usage, provider=provider, context=fragment.get('id'))
+            else:
             response = self.llm_client.call_llm(
                 prompt, 
-                provider="deepseek"
+                    provider=provider
             )
             
             # 解析响应

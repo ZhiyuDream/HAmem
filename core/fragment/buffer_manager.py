@@ -59,12 +59,23 @@ class BufferManager:
         self.fragment_counter += 1
         fragment_id = f"fragment_{self.fragment_counter}"
         
+        # 从turns中提取conversation_time（优先使用metadata中的session_time）
+        conversation_time = self.current_timestamp or "unknown"
+        if self.turns:
+            # 尝试从第一个turn的metadata中获取session_time
+            first_turn = self.turns[0]
+            metadata = first_turn.get('metadata', {})
+            session_time = metadata.get('session_time', '')
+            if session_time:
+                conversation_time = session_time
+        
         # 构建片段数据
         fragment = {
             "id": fragment_id,
             "type": "fragment",
             "content": self._format_fragment_content(self.turns),
-            "time": self.current_timestamp or "unknown",
+            "time": conversation_time,  # 使用session_time作为conversation_time
+            "conversation_time": conversation_time,  # 同时设置conversation_time字段
             "layer": 0,
             "active": True
         }
@@ -107,12 +118,23 @@ class BufferManager:
         self.fragment_counter += 1
         fragment_id = f"fragment_{self.fragment_counter}"
         
+        # 从turns中提取conversation_time（优先使用metadata中的session_time）
+        conversation_time = self.current_timestamp or "unknown"
+        if fragment_turns:
+            # 尝试从第一个turn的metadata中获取session_time
+            first_turn = fragment_turns[0]
+            metadata = first_turn.get('metadata', {})
+            session_time = metadata.get('session_time', '')
+            if session_time:
+                conversation_time = session_time
+        
         # 构建片段数据
         fragment = {
             "id": fragment_id,
             "type": "fragment",
             "content": content,
-            "time": self.current_timestamp or "unknown",
+            "time": conversation_time,  # 使用session_time作为conversation_time
+            "conversation_time": conversation_time,  # 同时设置conversation_time字段
             "layer": 0,
             "active": True
         }

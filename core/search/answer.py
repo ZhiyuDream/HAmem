@@ -15,13 +15,15 @@ class AnswerGenerator:
     Combine base_answer prompt with specialized modules to generate the final answer
     """
     
-    def __init__(self, llm_client: LLMClient, prompt_dir: str = None):
+    def __init__(self, llm_client: LLMClient, prompt_dir: str = None, default_provider: str = "deepseek"):
         """
         Args:
             llm_client: LLM client
             prompt_dir: prompt directory (defaults to core/search/prompt)
+            default_provider: 默认LLM提供商 ("openai" 或 "deepseek")
         """
         self.llm_client = llm_client
+        self.default_provider = default_provider
         
         if prompt_dir is None:
             # Default prompt directory
@@ -33,26 +35,28 @@ class AnswerGenerator:
     def try_answer(
         self,
         question: str,
-        context: Dict[str, Any]
+        context: Dict[str, Any],
+        selected_modules: List[str] = None
     ) -> Dict[str, str]:
         """
         Try to answer (used when can_answer_early=true)
+        
+        Args:
+            question: Question text
+            context: Context dictionary
+            selected_modules: Pre-selected specialized modules (from expansion decision)
+                            If None, uses default module
         """
         print(f"\n💬 Trying to answer...")
         
-        # 1. 路由问题，选择specialized modules
-        from .router import QuestionRouter
-        from core.infrastructure import LLMClient
-        from config import Config
+        # 使用传入的模块（来自扩展决策），不再进行路由
+        if selected_modules is None:
+            selected_modules = ['detail_extraction']
+            print(f"  🎯 Using default modules: {selected_modules}")
+        else:
+            print(f"  🎯 Using selected modules: {selected_modules}")
         
-        
-        # Create a temporary router (ideally reuse a shared instance)
-        router = QuestionRouter(LLMClient(Config()))
-        selected_modules = router.route(question)
-        
-        print(f"  ✅ Selected modules: {selected_modules}")
-        
-        # 2. 生成答案
+        # 直接生成答案
         return self.generate(question, context, selected_modules)
     
     def generate(
@@ -74,7 +78,7 @@ class AnswerGenerator:
         prompt = self._build_answer_prompt(question, context, selected_modules)
         
         # 调用LLM
-        response = self.llm_client.call_llm(prompt, provider="deepseek")
+        response = self.llm_client.call_llm(prompt, provider=self.default_provider)
         
         # Parse result
         result = self._parse_answer_response(response)

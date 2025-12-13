@@ -2,19 +2,73 @@
 Layer1智能召回模块
 
 为冲突检测召回候选实体和关系
+优先使用cache（FAISS）召回，因为cache中有当前处理过程中累积的实体
+如果cache结果不足，再从Neo4j补充
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+import logging
 from core.infrastructure import UnifiedCache
+from core.infrastructure.neo4j_vector_search import Neo4jVectorSearch
+from core.infrastructure.neo4j_client import Neo4jClient
+
+logger = logging.getLogger(__name__)
 
 
 class Layer1Recall:
     """Layer1智能召回器"""
     
-    def __init__(self, cache: UnifiedCache):
+    def __init__(
+        self, 
+        cache: UnifiedCache,
+        neo4j_vector_search: Optional[Neo4jVectorSearch] = None,
+        namespace: str = "default"
+    ):
+        """
+        初始化召回器
+        
+        Args:
+            cache: UnifiedCache（用于生成embedding）
+            neo4j_vector_search: Neo4j向量搜索实例（如果提供，使用Neo4j向量搜索；否则使用FAISS）
+            namespace: 命名空间
+        """
         self.cache = cache
+        self.neo4j_vector_search = neo4j_vector_search
+        self.namespace = namespace
         self.entity_similarity_threshold = 0.85
         self.relation_similarity_threshold = 0.85
+        
+        # 检查Neo4j是否支持向量索引（社区版不支持）
+        if neo4j_vector_search:
+            # 检查是否支持向量索引
+            self.use_neo4j_search = getattr(neo4j_vector_search, 'supports_vector_index', False)
+            if not self.use_neo4j_search:
+                print("  ⚠️  Neo4j社区版不支持原生向量索引，将使用cache（FAISS）进行召回")
+        else:
+            self.use_neo4j_search = False
+        
+        # 如果使用Neo4j向量搜索，尝试创建向量索引
+        if self.use_neo4j_search:
+            self._ensure_vector_index()
+        else:
+            print("  ℹ️  使用cache（FAISS）进行向量召回，Neo4j仅用于存储图结构")
+    
+    def _ensure_vector_index(self):
+        """确保向量索引存在"""
+        if not self.use_neo4j_search:
+            return
+        
+        try:
+            # 尝试创建Layer1实体的向量索引
+            # embedding维度：text-embedding-3-small 是 1536
+            self.neo4j_vector_search.create_vector_index(
+                index_name=f"layer1_entity_vector_idx_{self.namespace}",
+                label="Entity",
+                dimension=1536,
+                similarity_function='cosine'
+            )
+        except Exception as e:
+            print(f"  ⚠️  创建向量索引失败（可能已存在）: {e}")
     
     def recall_entity_candidates(
         self, 
@@ -29,26 +83,62 @@ class Layer1Recall:
         Returns:
             候选实体列表
         """
-        # 构建搜索文本
-        search_text = entity['name'] + ' ' + entity['description']
+        # 构建搜索文本（使用实体的name和description）
+        name = entity.get('name', '')
+        description = entity.get('description', '')
+        search_text = f"{name} {description}".strip()
         
         # 生成embedding
         entity_embedding, _, _ = self.cache.get_or_generate_embedding(search_text)
         
-        # FAISS检索相似实体（只在Layer1的实体中搜索）
+        candidates = []
+        
+        # 首先尝试从cache（FAISS）召回（优先，因为cache中有当前处理过程中累积的实体）
+        try:
         similar_entities = self.cache.filter_and_search(
             entity_embedding,
             filters={'type': 'entity', 'layer': 1},
-            top_k=10  # 多召回一些，后面过滤
+                top_k=10
         )
         
         # 过滤：相似度阈值
-        candidates = [
+            cache_candidates = [
             c for c in similar_entities
             if c['similarity'] > self.entity_similarity_threshold
         ]
+            candidates.extend(cache_candidates)
+        except Exception as e:
+            logger.debug(f"从cache召回失败: {e}")
         
-        # 限制最多5个候选
+        # 如果使用Neo4j搜索且cache召回结果不足，尝试从Neo4j补充
+        if self.use_neo4j_search and len(candidates) < 5:
+            try:
+                similar_nodes = self.neo4j_vector_search.vector_search(
+                    query_embedding=entity_embedding,
+                    index_name=f"layer1_entity_vector_idx_{self.namespace}",
+                    label="Entity",
+                    top_k=10,
+                    similarity_threshold=self.entity_similarity_threshold
+                )
+                
+                # 转换为统一格式并去重
+                existing_ids = {c.get('id') for c in candidates}
+                for node in similar_nodes:
+                    if node.get('layer') == 1 and node.get('type') == 'entity':
+                        node_id = node.get('id')
+                        if node_id not in existing_ids:
+                            candidates.append({
+                                'id': node_id,
+                                'name': node.get('name', ''),
+                                'content': node.get('content', ''),
+                                'similarity': node.get('similarity_score', 0.0)
+                            })
+                            existing_ids.add(node_id)
+            except Exception as e:
+                logger.debug(f"从Neo4j召回失败: {e}")
+        
+        # 按相似度排序并限制数量
+        candidates.sort(key=lambda x: x.get('similarity', 0.0), reverse=True)
         return candidates[:5]
     
     def recall_relation_candidates(
@@ -168,8 +258,14 @@ class Layer1Recall:
             entity_embeddings.append(embedding)
             entity_names.append(name)
         
-        # Step 2: 对每个实体并行搜索（FAISS支持批量搜索）
+        # Step 2: 对每个实体进行搜索
+        # 优先使用cache（FAISS）召回，因为cache中已经有当前处理过程中累积的实体
+        # Neo4j中的实体可能还没有写入（流式处理）
         for i, (entity_name, entity_embedding) in enumerate(zip(entity_names, entity_embeddings)):
+            candidates = []
+            
+            # 首先尝试从cache（FAISS）召回
+            try:
             similar_entities = self.cache.filter_and_search(
                 entity_embedding,
                 filters={'type': 'entity', 'layer': 1},
@@ -177,10 +273,45 @@ class Layer1Recall:
             )
             
             # 过滤：相似度阈值
-            candidates = [
+                cache_candidates = [
                 c for c in similar_entities
                 if c['similarity'] > self.entity_similarity_threshold
-            ][:5]  # 最多5个候选
+                ]
+                candidates.extend(cache_candidates)
+            except Exception as e:
+                logger.debug(f"从cache召回失败: {e}")
+            
+            # 如果使用Neo4j搜索且cache召回结果不足，尝试从Neo4j补充
+            if self.use_neo4j_search and len(candidates) < 5:
+                try:
+                    similar_nodes = self.neo4j_vector_search.vector_search(
+                        query_embedding=entity_embedding,
+                        index_name=f"layer1_entity_vector_idx_{self.namespace}",
+                        label="Entity",
+                        top_k=10,
+                        similarity_threshold=self.entity_similarity_threshold
+                    )
+                    
+                    # 转换为统一格式并去重（避免与cache结果重复）
+                    existing_ids = {c.get('id') for c in candidates}
+                    for node in similar_nodes:
+                        # 只返回Layer1的实体
+                        if node.get('layer') == 1 and node.get('type') == 'entity':
+                            node_id = node.get('id')
+                            if node_id not in existing_ids:
+                                candidates.append({
+                                    'id': node_id,
+                                    'name': node.get('name', ''),
+                                    'content': node.get('content', ''),
+                                    'similarity': node.get('similarity_score', 0.0)
+                                })
+                                existing_ids.add(node_id)
+                except Exception as e:
+                    logger.debug(f"从Neo4j召回失败: {e}")
+            
+            # 按相似度排序并限制数量
+            candidates.sort(key=lambda x: x.get('similarity', 0.0), reverse=True)
+            candidates = candidates[:5]  # 最多5个候选
             
             entity_candidates[entity_name] = candidates
             

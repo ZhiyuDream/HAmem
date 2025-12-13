@@ -4,6 +4,19 @@ Do NOT use data about a different term that merely looks or sounds similar (for 
 Only use information that is directly and reliably related to the specified topic. 
 If such information is unavailable, respond with "Insufficient information" instead of forcing an answer.
 
+MODULE SELECTION (Apply automatically based on question type):
+- **time_handling**: For WHEN questions ("when did", "what time", "how long ago", "since when", dates/years/months)
+- **state_analysis**: For CURRENT STATUS questions ("currently doing", "now", "recent status", "what is X doing now")
+- **opinion_sentiment**: For FEELINGS/OPINIONS questions (emotions, preferences, attitudes)
+- **inference_prediction**: For PREDICTIONS/REASONING questions ("what will happen", "what might")
+- **detail_extraction**: For SPECIFIC DETAILS questions ("what did X do", "how did X do Y", step-by-step processes)
+- **factual_lookup**: For DIRECT FACTS questions (simple attribute lookups)
+
+Apply the most relevant module(s) automatically based on the question. You may combine multiple modules if needed.
+
+SPECIALIZED MODULE GUIDELINES:
+{specialized_modules}
+
 CORE PRINCIPLES:
 1. Be concise and direct - answer the question, don't repeat it
 2. Use specific details when available

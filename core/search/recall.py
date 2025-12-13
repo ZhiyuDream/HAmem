@@ -29,20 +29,50 @@ class SearchRecall:
     def multi_layer_recall(
         self,
         query: str,
+        layer0_top_k: int = 2,
         layer1_top_k: int = 10,
         layer2_top_k: int = 20,
         layer3_top_k: int = 5
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Multi-layer recall: search multiple layers at once
+        Multi-layer recall: search multiple layers at once (including Layer0 Fragment)
         """
         print(f"\n🔍 Multi-layer recall: query='{query[:50]}...'")
         
-        results = {
-            'layer1': self.recall_by_layer(query, layer=1, top_k=layer1_top_k),
-            'layer2': self.recall_by_layer(query, layer=2, top_k=layer2_top_k),
-            'layer3': self.recall_by_layer(query, layer=3, top_k=layer3_top_k)
-        }
+        results = {}
+        
+        # Layer0 (Fragment): 使用向量相似度搜索
+        if layer0_top_k > 0:
+            try:
+                from ..infrastructure.embedding import EmbeddingManager
+                from config import Config
+                config = Config()
+                embedding_manager = EmbeddingManager(config)
+                query_embedding, _, _ = self.cache.get_or_generate_embedding(query)
+                
+                fragment_candidates = self.cache.filter_and_search(
+                    query_embedding,
+                    filters={'layer': 0},  # 只搜索Fragment
+                    top_k=layer0_top_k
+                )
+                
+                # 转换为节点列表格式
+                fragment_nodes = []
+                for candidate in fragment_candidates:
+                    frag_node = candidate.get('node', {})
+                    if frag_node:
+                        fragment_nodes.append(frag_node)
+                
+                results['layer0'] = fragment_nodes
+                print(f"  ✅ Layer0: {len(results['layer0'])} nodes")
+            except Exception as e:
+                print(f"  ⚠️  Layer0 recall failed: {e}")
+                results['layer0'] = []
+        
+        # Layer1/Layer2/Layer3
+        results['layer1'] = self.recall_by_layer(query, layer=1, top_k=layer1_top_k)
+        results['layer2'] = self.recall_by_layer(query, layer=2, top_k=layer2_top_k)
+        results['layer3'] = self.recall_by_layer(query, layer=3, top_k=layer3_top_k)
         
         print(f"  ✅ Layer1: {len(results['layer1'])} nodes")
         print(f"  ✅ Layer2: {len(results['layer2'])} nodes")

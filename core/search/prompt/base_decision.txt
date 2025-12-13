@@ -13,11 +13,20 @@ FRAGMENTS:
 
 TASKS:
 1. Select the best specialized module for answering the question:
-   - time_handling (for when/time questions, dates, "when did", "what time", "which day", "how long ago", "How many days")
-   - opinion_sentiment (for feelings/opinions)  
-   - inference_prediction (for predictions/reasoning)
-   - state_analysis (for "currently doing", "now", "recent status")
-   - detail_extraction (for "what did X do after Y", "how did X do Z", specific event details)
+   
+   **time_handling** (PRIORITY for time-related questions):
+   - Questions asking about WHEN something happened: "when did", "what time", "which day", "on what date"
+   - Questions about time periods: "how long ago", "how many days", "how long", "since when"
+   - Questions about dates, years, months, seasons
+   - Questions with relative time expressions: "yesterday", "last week", "last month", "last year"
+   - Questions asking about chronological order or timing
+   - Examples: "When did X start Y?", "What time did X happen?", "How long ago did X?", "Which year did X occur?"
+   - **IMPORTANT: If the question involves ANY time-related aspect, choose time_handling**
+   
+   - opinion_sentiment (for feelings/opinions, emotions, preferences)
+   - inference_prediction (for predictions, reasoning, "what will happen", "what might")
+   - state_analysis (for current status, "currently doing", "now", "recent status", "what is X doing now")
+   - detail_extraction (for specific event details, "what did X do", "how did X do Y", step-by-step processes)
 
 2. Assess if recalled nodes contain sufficient information for the question
 

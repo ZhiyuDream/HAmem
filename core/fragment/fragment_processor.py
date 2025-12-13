@@ -5,6 +5,7 @@
 """
 
 import json
+import tiktoken
 from typing import List, Dict, Any, Optional
 from core.infrastructure import LLMClient, parse_llm_json
 from .prompt import build_batch_split_fragment_prompt
@@ -13,10 +14,14 @@ from .prompt import build_batch_split_fragment_prompt
 class FragmentProcessor:
     """分片处理器"""
     
-    def __init__(self, llm_client: LLMClient):
+    def __init__(self, llm_client: LLMClient, default_provider: str = "deepseek", token_tracker=None):
         self.llm_client = llm_client
+        self.default_provider = default_provider
+        self.token_tracker = token_tracker  # Token统计收集器（可选）
+        # 初始化tiktoken编码器（用于计算token数）
+        self._encoding = tiktoken.get_encoding("cl100k_base")
     
-    def should_split(self, turns: List[Dict[str, Any]]) -> Optional[int]:
+    def should_split(self, turns: List[Dict[str, Any]], provider: str = None) -> Optional[int]:
         """
         判断是否需要分片以及分片点
         
@@ -41,13 +46,27 @@ class FragmentProcessor:
             # 构建prompt
             prompt = build_batch_split_fragment_prompt(formatted_turns)
             
+            # 计算token数
+            prompt_tokens = len(self._encoding.encode(prompt))
+            
             print(f"🔍 调用LLM进行分片判断...")
-            print(f"📝 Prompt长度: {len(prompt)} 字符")
+            print(f"📝 Prompt tokens: {prompt_tokens:,}")
             
             # 调用LLM
+            provider = provider or self.default_provider
+            # 如果启用了token追踪，获取usage信息
+            if self.token_tracker:
+                response, usage = self.llm_client.call_llm(
+                    prompt, 
+                    provider=provider,
+                    return_usage=True
+                )
+                # 记录token使用情况
+                self.token_tracker.record_llm_call("fragment_splitting", usage, provider=provider)
+            else:
             response = self.llm_client.call_llm(
                 prompt, 
-                provider="deepseek"
+                    provider=provider
             )
             
             print(f"🤖 LLM响应: {response[:200]}...")
@@ -90,17 +109,18 @@ class FragmentProcessor:
         else:
             return split_point
     
-    def process_fragment(self, turns: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def process_fragment(self, turns: List[Dict[str, Any]], provider: str = None) -> Dict[str, Any]:
         """
         处理分片逻辑
         
         Args:
             turns: 对话轮次列表
+            provider: LLM提供商（可选）
         
         Returns:
             Dict: 处理结果
         """
-        split_point = self.should_split(turns)
+        split_point = self.should_split(turns, provider=provider)
         
         if split_point is None:
             return {

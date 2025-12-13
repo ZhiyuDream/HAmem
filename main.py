@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import Config
 from memory import MemoryBuilder, ConversationData, StorageManager
-from retrieval import RetrievalEngine, QASystem
+from retrieval import RetrievalEngine, create_qa_system
 
 
 class HAmem:
@@ -31,38 +31,95 @@ class HAmem:
         self.memory_builder = MemoryBuilder(config)
         self.storage = StorageManager(config)
         self.retrieval_engine = RetrievalEngine(config)
-        self.qa_system = QASystem(config)
+        self.retrieval_engine.set_storage(self.storage)
+        
+        # Initialize cache for QA system
+        from core.infrastructure import UnifiedCache, EmbeddingManager
+        embedding_manager = EmbeddingManager(config)
+        cache = UnifiedCache(
+            cache_dir=config.cache_dir,
+            namespace="default",
+            embedding_manager=embedding_manager
+        )
+        
+        # Create QA system with optional hybrid search
+        self.qa_system = create_qa_system(
+            config=config,
+            cache=cache,
+            storage=self.storage,
+            namespace="default"
+        )
         
         print("🚀 HAmem initialized successfully!")
     
-    def build_memory(self, conversation_data: Dict[str, Any]) -> Dict[str, Any]:
+    def build_memory(self, conversation_data: Dict[str, Any], namespace: str = "default") -> Dict[str, Any]:
+        """
+        Build memory from conversation data
         
-        print("🧠 Building memory...")
+        Args:
+            conversation_data: Conversation data in HAmem format
+            namespace: Namespace for storage isolation (will be used as Neo4j database name)
+        """
+        print(f"🧠 Building memory (namespace: {namespace})...")
         
         # Convert input data format
         conversation = ConversationData.from_dict(conversation_data)
         
-        # Build memory
-        result = self.memory_builder.build_memory(conversation)
+        # Build memory（纯Neo4j架构：每个fragment处理完后已直接写入Neo4j）
+        result = self.memory_builder.build_memory(conversation, namespace=namespace)
         
         print(f"✅ Memory built: {result.total_fragments} fragments processed")
         return result.to_dict()
     
-    def search_memory(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
+    def search_memory(self, query: str, top_k: int = 10, namespace: str = "default") -> List[Dict[str, Any]]:
         """Search memory"""
         print(f"🔍 Searching memory for: {query}")
         
-        results = self.retrieval_engine.search(query, top_k)
+        results = self.retrieval_engine.search(query, top_k=top_k, namespace=namespace)
         
         print(f"✅ Found {len(results)} results")
-        return [result.to_dict() for result in results]
+        # results可能是dict或对象，需要兼容处理
+        return [r if isinstance(r, dict) else r.to_dict() for r in results]
     
-    def ask_question(self, question: str) -> Dict[str, Any]:
-        """Answer a question"""
-        print(f"❓ Answering question: {question}")
+    def ask_question(self, question: str, namespace: str = "default") -> Dict[str, Any]:
+        """
+        Answer a question
+        
+        Args:
+            question: Question to answer
+            namespace: Namespace for the question (should match the namespace used in build_memory)
+        """
+        print(f"❓ Answering question: {question} (namespace: {namespace})")
+        
+        # 如果namespace不同，需要重新创建QA系统（使用正确的namespace对应的cache）
+        if hasattr(self.qa_system, 'namespace') and self.qa_system.namespace != namespace:
+            print(f"  🔄 切换namespace: {self.qa_system.namespace} -> {namespace}")
+            # 重新创建cache（使用正确的namespace）
+            from core.infrastructure import UnifiedCache, EmbeddingManager
+            embedding_manager = EmbeddingManager(self.config)
+            cache = UnifiedCache(
+                cache_dir=self.config.cache_dir,
+                namespace=namespace,
+                embedding_manager=embedding_manager
+            )
+            
+            # 重新创建QA系统（使用正确的namespace）
+            from retrieval import create_qa_system
+            self.qa_system = create_qa_system(
+                config=self.config,
+                cache=cache,
+                storage=self.storage,
+                namespace=namespace
+            )
+            print(f"  ✅ QA系统已更新为namespace: {namespace}")
         
         answer = self.qa_system.answer_question(question)
         
+        # answer可能是dict或对象，需要兼容处理
+        if isinstance(answer, dict):
+            print(f"✅ Answer generated")
+            return answer
+        else:
         print(f"✅ Answer generated with confidence: {answer.confidence}")
         return answer.to_dict()
     

@@ -14,10 +14,18 @@ from config import Config
 class LLMClient:
     """统一的LLM调用客户端"""
     
-    def __init__(self, config: Config):
+    def __init__(self, config: Config, token_tracker=None):
+        """
+        初始化LLM客户端
+        
+        Args:
+            config: 配置对象
+            token_tracker: Token统计收集器（可选），用于自动记录token使用情况
+        """
         self.config = config
         self.openai_client = None
         self.deepseek_client = None
+        self.token_tracker = token_tracker  # Token统计收集器
         self._init_clients()
     
     def _init_clients(self):
@@ -38,7 +46,7 @@ class LLMClient:
                 timeout=60.0
             )
     
-    def call_llm(self, prompt: str, model: str = None, provider: str = "deepseek") -> str:
+    def call_llm(self, prompt: str, model: str = None, provider: str = "deepseek", return_usage: bool = False):
         """
         调用LLM API
         
@@ -46,29 +54,32 @@ class LLMClient:
             prompt: 输入提示
             model: 模型名称，如果为None则使用配置中的默认模型
             provider: 提供商 ("openai" 或 "deepseek")
+            return_usage: 是否返回token使用信息
         
         Returns:
-            str: 模型回复内容
+            str 或 tuple: 如果return_usage=False，返回模型回复内容；如果return_usage=True，返回(content, usage_dict)
         """
         try:
             if provider == "openai":
-                return self._call_openai(prompt, model)
+                return self._call_openai(prompt, model, return_usage)
             elif provider == "deepseek":
-                return self._call_deepseek(prompt, model)
+                return self._call_deepseek(prompt, model, return_usage)
             else:
                 raise ValueError(f"不支持的提供商: {provider}")
         
         except Exception as e:
             print(f"❌ LLM API调用失败: {e}")
+            if return_usage:
+                return ("", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
             return ""
     
-    def _call_openai(self, prompt: str, model: str = None) -> str:
+    def _call_openai(self, prompt: str, model: str = None, return_usage: bool = False):
         """调用OpenAI API"""
         if not self.openai_client:
             raise ValueError("OpenAI客户端未初始化，请检查API密钥")
         
         if not model:
-            model = "gpt-4.1-mini"  # OpenAI默认模型
+            model = "gpt-4o-mini"  # OpenAI默认模型
         
         messages = [{"role": "user", "content": prompt}]
         
@@ -79,9 +90,21 @@ class LLMClient:
             max_tokens=2000
         )
         
-        return response.choices[0].message.content.strip()
+        content = response.choices[0].message.content.strip()
     
-    def _call_deepseek(self, prompt: str, model: str = None) -> str:
+        if return_usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens
+            }
+            # 不在这里自动记录token，由调用者自己决定如何记录（通过token_tracker.record_llm_call）
+            # 因为LLMClient无法知道调用类型，不应该硬编码为"fragment_splitting"
+            return (content, usage)
+        
+        return content
+    
+    def _call_deepseek(self, prompt: str, model: str = None, return_usage: bool = False):
         """调用DeepSeek API"""
         if not self.deepseek_client:
             raise ValueError("DeepSeek客户端未初始化，请检查API密钥")
@@ -98,7 +121,20 @@ class LLMClient:
             max_tokens=2000
         )
         
-        return response.choices[0].message.content.strip()
+        content = response.choices[0].message.content.strip()
+        
+        if return_usage:
+            # DeepSeek API也返回usage信息
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') and response.usage else 0,
+                "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') and response.usage else 0,
+                "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') and response.usage else 0
+            }
+            # 不在这里自动记录token，由调用者自己决定如何记录（通过token_tracker.record_llm_call）
+            # 因为LLMClient无法知道调用类型，不应该硬编码为"fragment_splitting"
+            return (content, usage)
+        
+        return content
     
     def batch_call_llm(self, prompts: List[str], model: str = None, provider: str = "deepseek") -> List[str]:
         """

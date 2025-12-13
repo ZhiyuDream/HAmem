@@ -49,6 +49,19 @@ class Config:
     # 存储配置
     storage_dir: str = os.getenv('STORAGE_DIR', 'storage')
     
+    # Neo4j 配置
+    neo4j_uri: str = os.getenv('NEO4J_URI', 'neo4j://localhost:7687')
+    neo4j_username: str = os.getenv('NEO4J_USERNAME', 'neo4j')
+    neo4j_password: str = os.getenv('NEO4J_PASSWORD', '')
+    neo4j_database: str = os.getenv('NEO4J_DATABASE', 'neo4j')
+    use_neo4j: bool = os.getenv('USE_NEO4J', 'True').lower() == 'true'  # 是否使用 Neo4j（默认启用）
+    use_hybrid_search: bool = os.getenv('USE_HYBRID_SEARCH', 'true').lower() == 'true'  # 是否使用混合检索（FAISS + Neo4j）
+    
+    # Neo4j 配置
+    neo4j_uri: str = os.getenv('NEO4J_URI', 'neo4j://localhost:7687')
+    neo4j_username: str = os.getenv('NEO4J_USERNAME', 'neo4j')
+    neo4j_password: str = os.getenv('NEO4J_PASSWORD', '')
+    
     # 处理配置
     fragment_max_length: int = int(os.getenv('FRAGMENT_MAX_LENGTH', '6000'))
     fragment_overlap: int = int(os.getenv('FRAGMENT_OVERLAP', '200'))
@@ -85,18 +98,29 @@ class Config:
             'cache_dir': self.cache_dir,
             'max_memory_cache_size': self.max_memory_cache_size,
             'storage_dir': self.storage_dir,
+            'use_neo4j': self.use_neo4j,
+            'neo4j_uri': self.neo4j_uri,
+            'neo4j_username': self.neo4j_username,
             'fragment_max_length': self.fragment_max_length,
             'fragment_overlap': self.fragment_overlap,
             'search_top_k': self.search_top_k,
             'similarity_threshold': self.similarity_threshold,
             'debug': self.debug,
-            'log_level': self.log_level
+            'log_level': self.log_level,
+            'neo4j_uri': self.neo4j_uri,
+            'neo4j_username': self.neo4j_username,
+            'neo4j_database': self.neo4j_database,
+            'use_neo4j': self.use_neo4j,
+            'use_hybrid_search': self.use_hybrid_search
         }
     
     def validate(self) -> bool:
         
         if not self.openai_api_key:
             raise ValueError("OpenAI API key is required")
+        
+        if self.use_neo4j and not self.neo4j_password:
+            raise ValueError("Neo4j password is required when USE_NEO4J is true")
         
         if self.max_retries < 1:
             raise ValueError("max_retries must be at least 1")

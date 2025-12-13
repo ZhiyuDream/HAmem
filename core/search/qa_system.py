@@ -5,7 +5,7 @@ Coordinates recall, expansion, routing, and answer generation
 """
 
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from core.infrastructure import LLMClient, UnifiedCache, parse_llm_json
 from .recall import SearchRecall
 from .expansion import GraphExpansion
@@ -28,7 +28,10 @@ class QASystem:
         storage,
         llm_client: LLMClient,
         namespace: str,
-        max_hops: int = 2
+        max_hops: int = 2,
+        use_hybrid_search: bool = False,
+        neo4j_client = None,
+        default_provider: str = "deepseek"
     ):
         """
         Args:
@@ -37,18 +40,33 @@ class QASystem:
             llm_client: LLM client
             namespace: Namespace
             max_hops: Max expansion hops
+            use_hybrid_search: 是否使用混合检索（FAISS + Neo4j）
+            neo4j_client: Neo4j 客户端（如果使用混合检索）
+            default_provider: 默认LLM提供商 ("openai" 或 "deepseek")
         """
         self.cache = cache
         self.storage = storage
         self.llm_client = llm_client
         self.namespace = namespace
         self.max_hops = max_hops
+        self.use_hybrid_search = use_hybrid_search
+        self.default_provider = default_provider
         
         # Initialize submodules
+        if use_hybrid_search and neo4j_client:
+            # 使用混合检索
+            from .neo4j_hybrid_recall import Neo4jHybridRecall
+            self.recall = Neo4jHybridRecall(cache, neo4j_client, namespace)
+            self.hybrid_recall = self.recall  # 保存引用以便访问混合检索功能
+            # 扩展仍然使用原有的 GraphExpansion（基于 UnifiedCache）
+            self.expansion = GraphExpansion(storage, cache)
+        else:
+            # 使用原有检索
         self.recall = SearchRecall(cache, storage)
         self.expansion = GraphExpansion(storage, cache)
-        self.router = QuestionRouter(llm_client)
-        self.answer_generator = AnswerGenerator(llm_client)
+        
+        self.router = QuestionRouter(llm_client, default_provider=default_provider)
+        self.answer_generator = AnswerGenerator(llm_client, default_provider=default_provider)
     
     def answer_question(self, question: str) -> Dict[str, Any]:
         """
@@ -68,62 +86,85 @@ class QASystem:
         
         # Stage 1: Initial recall
         print(f"\n📍 Stage 1: Initial recall")
-        recalled = self.recall.multi_layer_recall(question)
+        if self.use_hybrid_search and hasattr(self.recall, 'multi_layer_recall_with_expansion'):
+            # 使用混合检索（FAISS + Neo4j 图扩展）
+            print(f"  🔍 使用混合检索模式（FAISS + Neo4j）")
+            recalled = self.recall.multi_layer_recall_with_expansion(
+                question,
+                layer0_top_k=2,  # Fragment召回top2
+                layer1_top_k=10,
+                layer2_top_k=20,
+                layer3_top_k=5,
+                max_hops=1,  # 初始召回时只扩展1跳
+                expand_limit=30
+            )
+            # 提取初始节点和扩展节点（包括Layer0）
+            current_nodes = []
+            for layer_key in ['layer0', 'layer1', 'layer2', 'layer3']:
+                if layer_key in recalled:
+                    layer_data = recalled[layer_key]
+                    current_nodes.extend(layer_data.get('all_nodes', []))
+        else:
+            # 使用原有检索（包括Layer0）
+            recalled = self.recall.multi_layer_recall(
+                question,
+                layer0_top_k=2,  # Fragment召回top2
+                layer1_top_k=10,
+                layer2_top_k=20,
+                layer3_top_k=5
+            )
+            current_nodes = (
+                recalled.get('layer0', []) + 
+                recalled.get('layer1', []) + 
+                recalled.get('layer2', []) + 
+                recalled.get('layer3', [])
+            )
         
-        current_nodes = recalled['layer1'] + recalled['layer2'] + recalled['layer3']
         stats['recalled_nodes'] = len(current_nodes)
         
-        # Show recalled node IDs
+        # Show recalled node IDs (完整列表)
         print(f"\n📋 Recalled node IDs:")
-        print(f"  Layer1: {[n['id'] for n in recalled['layer1'][:10]]}" + 
-              (f" ... (+{len(recalled['layer1'])-10})" if len(recalled['layer1']) > 10 else ""))
-        print(f"  Layer2: {[n['id'] for n in recalled['layer2'][:10]]}" + 
-              (f" ... (+{len(recalled['layer2'])-10})" if len(recalled['layer2']) > 10 else ""))
-        print(f"  Layer3: {[n['id'] for n in recalled['layer3'][:10]]}" + 
-              (f" ... (+{len(recalled['layer3'])-10})" if len(recalled['layer3']) > 10 else ""))
+        if self.use_hybrid_search and hasattr(self.recall, 'multi_layer_recall_with_expansion'):
+            # 混合检索格式（包括Layer0）
+            for layer_key in ['layer0', 'layer1', 'layer2', 'layer3']:
+                if layer_key in recalled:
+                    layer_data = recalled[layer_key]
+                    layer_nodes = layer_data.get('all_nodes', [])
+                    layer_name = layer_key.upper()
+                    node_ids = [n.get('id', 'unknown') for n in layer_nodes]
+                    print(f"  {layer_name}: {node_ids} (共 {len(node_ids)} 个)")
+        else:
+            # 原有检索格式（需要添加Layer0）
+            layer0_ids = [n['id'] for n in recalled.get('layer0', [])]
+            layer1_ids = [n['id'] for n in recalled.get('layer1', [])]
+            layer2_ids = [n['id'] for n in recalled.get('layer2', [])]
+            layer3_ids = [n['id'] for n in recalled.get('layer3', [])]
+            if layer0_ids:
+                print(f"  Layer0: {layer0_ids} (共 {len(layer0_ids)} 个)")
+            print(f"  Layer1: {layer1_ids} (共 {len(layer1_ids)} 个)")
+            print(f"  Layer2: {layer2_ids} (共 {len(layer2_ids)} 个)")
+            print(f"  Layer3: {layer3_ids} (共 {len(layer3_ids)} 个)")
         
         all_edges = []
         all_fragments = []
         
-        # Stage 2: Multi-hop expansion loop
-        print(f"\n📍 Stage 2: Decision & Expansion")
-        
-        # 存储选定的模块（在第一次决策时确定）
-        selected_modules = None
+        # Stage 2: Direct answer generation (no separate decision step)
+        print(f"\n📍 Stage 2: Direct Answer Generation")
         
         for hop in range(self.max_hops):
             print(f"\n🔄 Hop {hop + 1}/{self.max_hops}")
             
-            # 2.1: Decision (sufficiency, need to expand)
+            # 2.1: Find candidates for potential expansion
             candidates, connecting_edges = self.expansion.find_candidates(
                 current_node_ids=[n['id'] for n in current_nodes],
                 max_candidates=50
             )
             
-            decision = self._make_expansion_decision(
-                question,
-                current_nodes,
-                candidates,
-                connecting_edges
-            )
-            stats['llm_calls'] += 1
-            
-            # Select modules on first decision
-            if selected_modules is None:
-                selected_modules = [decision.get('selected_module', 'detail_extraction')]
-                print(f"  🎯 选择模块: {selected_modules}")
-            
-            # Use all recalled nodes without filtering
-            can_answer_early = decision.get('can_answer_early', False)
-            information_sufficiency = decision.get('information_sufficiency', 'insufficient')
-            
-            print(f"  📊 Information sufficiency: {information_sufficiency}")
             print(f"  📊 Nodes used: {len(current_nodes)} (no filtering)")
-            print(f"  📊 can_answer_early: {can_answer_early}")
+            print(f"  📊 Candidates available: {len(candidates)}")
             
-            # 2.2: If sufficient, try to answer
-            if can_answer_early:
-                print(f"  🚀 Attempting to generate answer...")
+            # 2.2: Try to answer directly (LLM will automatically select appropriate modules)
+            print(f"  🚀 Attempting to generate answer directly...")
                 
                 # Get fragments
                 all_fragments = self.recall.get_fragments_by_nodes(
@@ -139,17 +180,34 @@ class QASystem:
                     'fragments': all_fragments
                 }
                 
-                # Try to answer (specialized modules)
-                answer_result = self.answer_generator.try_answer(question, context)
+            # Try to answer directly (LLM will automatically select appropriate modules)
+            # Pass all modules so LLM can choose which ones to apply
+            all_modules = ['time_handling', 'state_analysis', 'opinion_sentiment', 
+                          'inference_prediction', 'detail_extraction', 'factual_lookup']
+            answer_result = self.answer_generator.try_answer(
+                question, 
+                context, 
+                selected_modules=all_modules  # 让LLM自动选择和应用
+            )
                 stats['llm_calls'] += 1
                 
-                # Return LLM answer directly
+            answer = answer_result.get('answer', '')
+            reason = answer_result.get('reason', '')
+            
+            # Check if answer is sufficient (not "Insufficient information")
+            is_insufficient = (
+                'insufficient information' in answer.lower() or
+                '信息不足' in answer.lower() or
+                len(answer.strip()) < 10  # 答案太短也可能表示信息不足
+            )
+            
+            if not is_insufficient:
+                # Answer is sufficient, return it
                 print(f"  ✅ Answer generated successfully!")
-                
                 stats['hops'] = hop + 1
                 
                 print(f"\n{'='*60}")
-                print(f"✅ QA completed (early return at hop {hop + 1})")
+                print(f"✅ QA completed (hop {hop + 1})")
                 print(f"📊 Stats: {stats['llm_calls']} LLM calls, "
                       f"{stats['recalled_nodes']} recalled, "
                       f"{stats['expanded_nodes']} expanded, "
@@ -158,26 +216,102 @@ class QASystem:
                 
                 return {
                     'question': question,
-                    'answer': answer_result['answer'],
-                    'reason': answer_result['reason'],
+                    'answer': answer,
+                    'reason': reason,
                     'prompt_used': answer_result.get('prompt_used', ''),
                     'stats': stats
                 }
-            
-            # 2.3: Insufficient → expand
-            should_expand = decision.get('should_expand', False)
-            nodes_to_expand = decision.get('nodes_to_expand', [])
-            
-            if not should_expand or not nodes_to_expand:
-                print(f"  ⚠️  No expansion needed, stop loop")
-                break
-            
+            else:
+                # Answer is insufficient, try to expand using Neo4j
+                print(f"  ⚠️  Answer insufficient (detected 'Insufficient information'), attempting Neo4j expansion...")
+                
+                # 2.3: Expand using Neo4j if available
             if not candidates:
                 print(f"  ⚠️  No candidates to expand, stop")
                 break
             
-            # Execute expansion
-            print(f"  🔗 Expanding {len(nodes_to_expand)} nodes...")
+                # TODO: 使用Neo4j进行扩展（方案讨论中，暂不实现）
+                # 扩展方案：
+                # 1. 使用当前召回节点的ID，通过Neo4j的图扩展查询获取相关节点
+                # 2. 使用expand_from_nodes方法，从当前节点扩展到1-2跳的邻居节点
+                # 3. 过滤掉Fragment节点（layer=0），只保留Layer1/Layer2/Layer3节点
+                # 4. 限制扩展节点数量（例如最多50个）
+                # 5. 扩展后重新生成答案
+                
+                # 临时：使用现有的expansion.expand_nodes作为占位
+                nodes_to_expand = [c['id'] for c in candidates[:10]]  # 限制扩展节点数量
+                print(f"  🔗 Expanding {len(nodes_to_expand)} nodes using Neo4j...")
+                
+                # 使用Neo4j扩展（如果可用）
+                if self.use_hybrid_search and hasattr(self.recall, 'hybrid_search'):
+                    # 使用Neo4j的expand_from_nodes方法
+                    # recall.hybrid_search 是 Neo4jHybridSearch 实例
+                    # recall.hybrid_search.vector_search 是 Neo4jVectorSearch 实例
+                    expanded_nodes_list = self.recall.hybrid_search.vector_search.expand_from_nodes(
+                        node_ids=nodes_to_expand,
+                        max_hops=2,  # 扩展2跳
+                        limit=50  # 最多50个节点
+                    )
+                    
+                    # 分离Layer1/Layer2/Layer3节点和Fragment节点（layer=0）
+                    old_node_ids = {n['id'] for n in current_nodes}
+                    
+                    # Layer1/Layer2/Layer3节点：过滤掉已存在的节点
+                    new_nodes = [
+                        n for n in expanded_nodes_list 
+                        if n.get('id') not in old_node_ids and n.get('layer') != 0
+                    ]
+                    
+                    # Fragment节点（layer=0）：单独处理，使用向量相似度召回top2
+                    fragment_nodes = [
+                        n for n in expanded_nodes_list 
+                        if n.get('layer') == 0 and n.get('id') not in old_node_ids
+                    ]
+                    
+                    # 对Fragment节点进行向量相似度搜索，取top2
+                    top_fragments = []
+                    if fragment_nodes and hasattr(self.recall, 'hybrid_search'):
+                        try:
+                            # 获取问题的embedding
+                            query_embedding = self.recall.hybrid_search._get_query_embedding(question)
+                            
+                            # 使用cache的filter_and_search对Fragment进行向量搜索
+                            fragment_candidates = self.recall.hybrid_search.cache.filter_and_search(
+                                query_embedding,
+                                filters={'layer': 0},  # 只搜索Fragment
+                                top_k=2  # 取top2
+                            )
+                            
+                            # 提取Fragment节点
+                            for candidate in fragment_candidates:
+                                frag_node = candidate.get('node', {})
+                                if frag_node and frag_node.get('id') not in old_node_ids:
+                                    top_fragments.append(frag_node)
+                            
+                            print(f"  📄 Recalled {len(top_fragments)} top Fragment nodes via vector similarity")
+                        except Exception as e:
+                            print(f"  ⚠️  Failed to recall Fragment nodes: {e}")
+                            # 如果向量搜索失败，使用扩展得到的Fragment节点（最多2个）
+                            top_fragments = fragment_nodes[:2]
+                    
+                    # 合并所有新节点
+                    all_new_nodes = new_nodes + top_fragments
+                    
+                    if all_new_nodes:
+                        current_nodes.extend(all_new_nodes)
+                        stats['expanded_nodes'] += len(all_new_nodes)
+                        stats['hops'] = hop + 1
+                        print(f"  ✅ Expanded {len(new_nodes)} nodes + {len(top_fragments)} fragments via Neo4j")
+                        if all_new_nodes:
+                            new_node_ids = [n['id'] for n in all_new_nodes]
+                            print(f"     Expanded node IDs: {new_node_ids[:10]}... (共 {len(new_node_ids)} 个)")
+                        # 继续下一轮循环，重新尝试生成答案
+                        continue
+                    else:
+                        print(f"  ⚠️  Neo4j expansion yielded no new nodes, stop")
+                        break
+                else:
+                    # 降级到原有的expansion方法
             expanded_nodes, expanded_edges = self.expansion.expand_nodes(
                 nodes_to_expand,
                 max_neighbors=20
@@ -198,9 +332,10 @@ class QASystem:
             
             print(f"  ✅ Expanded {len(new_nodes)} new nodes")
             if new_nodes:
-                new_node_ids = [n['id'] for n in new_nodes[:10]]
-                print(f"     Expanded node IDs: {new_node_ids}" + 
-                      (f" ... (+{len(new_nodes)-10})" if len(new_nodes) > 10 else ""))
+                        new_node_ids = [n['id'] for n in new_nodes]
+                        print(f"     Expanded node IDs: {new_node_ids} (共 {len(new_node_ids)} 个)")
+                    # 继续下一轮循环，重新尝试生成答案
+                    continue
         
         # Stage 3: Final answer generation
         print(f"\n📍 Stage 3: Final answer generation")
@@ -217,17 +352,15 @@ class QASystem:
             'fragments': all_fragments
         }
         
-        # Final generation (specialized modules)
+        # Final generation (with all modules available)
         print(f"\n💬 Generating answer...")
         
-        # 使用之前选定的模块（如果没有则使用默认模块）
-        if selected_modules is None:
-            selected_modules = ['detail_extraction']
-            print(f"  🎯 Using default modules: {selected_modules}")
-        else:
-            print(f"  🎯 Using selected modules: {selected_modules}")
+        # 使用所有模块，让LLM自动选择和应用
+        all_modules = ['time_handling', 'state_analysis', 'opinion_sentiment', 
+                      'inference_prediction', 'detail_extraction', 'factual_lookup']
+        print(f"  🎯 Using all modules (LLM will auto-select): {all_modules}")
         
-        answer_result = self.answer_generator.generate(question, context, selected_modules)
+        answer_result = self.answer_generator.generate(question, context, selected_modules=all_modules)
         stats['llm_calls'] += 1
         
         print(f"\n{'='*60}")
@@ -267,14 +400,13 @@ class QASystem:
         )
         
         # 调用LLM
-        response = self.llm_client.call_llm(prompt, provider="deepseek")
+        response = self.llm_client.call_llm(prompt, provider=self.default_provider)
         
-        # 解析决策
-        decision = self._parse_decision_response(response, current_nodes, candidates)
+        # 解析决策（传入question用于辅助检查）
+        decision = self._parse_decision_response(response, current_nodes, candidates, question)
         
         print(f"    选择模块: {decision.get('selected_module', 'unknown')}")
-        print(f"    扩展: {decision['should_expand']}")
-        print(f"    提前回答: {decision['can_answer_early']}")
+        print(f"    提前回答: {decision.get('can_answer_early', False)}")
         
         return decision
     
@@ -356,60 +488,49 @@ RECALLED NODES:
 CANDIDATES:
 {candidates_str}
 
-TASKS:
-1. Classify question type
-2. Identify relevant nodes (node filtering)
-3. Assess if information is sufficient
-4. Decide if expansion is needed
-5. Decide if can answer now
-
-JSON Response:
-{{
-    "question_type": "...",
-    "retained_node_ids": ["node_id1", ...],
-    "information_sufficiency": "sufficient|partial|insufficient", 
-    "should_expand": true/false,
-    "nodes_to_expand": ["node_id1", ...],
-    "can_answer_early": true/false,
-    "reasoning": "..."
-}}
 """
     
     def _parse_decision_response(
         self,
         response: str,
         current_nodes: List[Dict],
-        candidates: List[Dict]
+        candidates: List[Dict],
+        question: str = ""
     ) -> Dict[str, Any]:
         """
         Parse LLM decision JSON
         """
         default_result = {
             'selected_module': 'detail_extraction',
-            'information_sufficiency': 'insufficient',
-            'should_expand': False,
-            'nodes_to_expand': [],
             'can_answer_early': False,
             'reasoning': 'Default: insufficient information'
         }
         
         result = parse_llm_json(
             response,
-            expected_keys=['selected_module', 'information_sufficiency', 'should_expand', 'nodes_to_expand', 'can_answer_early'],
+            expected_keys=['selected_module', 'can_answer_early'],
             default=default_result
         )
         
         if result is None:
-            return default_result
+            result = default_result
         
-        # 验证扩展节点IDs
-        current_ids = {n['id'] for n in current_nodes}
-        candidate_ids = {n['id'] for n in candidates}
-        
-        nodes_to_expand = result.get('nodes_to_expand', [])
-        if not isinstance(nodes_to_expand, list):
-            nodes_to_expand = []
-        result['nodes_to_expand'] = [nid for nid in nodes_to_expand if nid in current_ids]
+        # 辅助检查：如果问题明显是时间相关的，但LLM没有选择time_handling，强制选择
+        if question:
+            time_keywords = [
+                'when', 'what time', 'which day', 'which date', 'which year', 'which month',
+                'how long', 'how long ago', 'how many days', 'how many years', 'how many months',
+                'since when', 'since', 'ago', 'yesterday', 'last week', 'last month', 'last year',
+                'start', 'begin', 'end', 'finish', 'occur', 'happen', 'took place'
+            ]
+            question_lower = question.lower()
+            is_time_question = any(keyword in question_lower for keyword in time_keywords)
+            
+            if is_time_question and result.get('selected_module') != 'time_handling':
+                # 如果明显是时间问题但LLM没有选择time_handling，强制选择
+                result['selected_module'] = 'time_handling'
+                if result.get('reasoning'):
+                    result['reasoning'] = f"Time-related question detected. {result['reasoning']}"
         
         return result
 

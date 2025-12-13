@@ -14,12 +14,14 @@ class QuestionRouter:
     Analyze question type and select specialized modules
     """
     
-    def __init__(self, llm_client: LLMClient):
+    def __init__(self, llm_client: LLMClient, default_provider: str = "deepseek"):
         """
         Args:
             llm_client: LLM client
+            default_provider: 默认LLM提供商 ("openai" 或 "deepseek")
         """
         self.llm_client = llm_client
+        self.default_provider = default_provider
     
     def route(self, question: str) -> List[str]:
         """
@@ -31,7 +33,7 @@ class QuestionRouter:
         prompt = self._build_router_prompt(question)
         
         # 调用LLM
-        response = self.llm_client.call_llm(prompt, provider="deepseek")
+        response = self.llm_client.call_llm(prompt, provider=self.default_provider)
         
         # Debug: raw response
         print(f"  🔍 LLM raw response: {response[:200]}...")

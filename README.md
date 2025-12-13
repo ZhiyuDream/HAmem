@@ -73,7 +73,7 @@ hamem = HAmem()
 conversation_data = {
     "sessions": [
         {
-            "session_id": "session_1",
+           
             "timestamp": "2024-01-01T10:00:00Z",
             "turns": [
                 {
@@ -179,7 +179,7 @@ from config import Config
 config = Config(
     openai_api_key="your-key",
     llm_model="gpt-4",
-    embedding_model="text-embedding-3-large",
+    embedding_model="text-embedding-3-small",
     max_workers=10,
     embedding_batch_size=200
 )

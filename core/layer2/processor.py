@@ -17,9 +17,10 @@ class Layer2Processor:
         self,
         llm_client: LLMClient,
         cache: UnifiedCache,
-        storage_dir: str = "storage"
+        storage_dir: str = "storage",
+        token_tracker=None
     ):
-        self.extractor = Layer2Extractor(llm_client)
+        self.extractor = Layer2Extractor(llm_client, token_tracker=token_tracker)
         self.storage = Layer2Storage(storage_dir)
         self.cache = cache
         
@@ -32,7 +33,8 @@ class Layer2Processor:
         self,
         fragment: Dict[str, Any],
         namespace: str,
-        layer1_entities: List[Dict[str, Any]]
+        layer1_entities: List[Dict[str, Any]],
+        existing_layer2_nodes: List[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         处理单个fragment，提取时间线信息
@@ -51,9 +53,46 @@ class Layer2Processor:
         print(f"📅 Layer2处理Fragment: {fragment_id}")
         print(f"{'='*60}")
         
-        # Phase 1: 提取时间线信息 (LLM调用)
-        print("\n🤖 提取时间线信息...")
-        extraction_result = self.extractor.extract_from_fragment(fragment, layer1_entities)
+        # Phase 0: 使用已召回的已有Layer2节点（如果未提供，则自己召回）
+        if existing_layer2_nodes is None:
+            print("\n🔍 Phase 0: 召回已有Layer2节点...")
+            fragment_text = fragment.get('content', '')
+            existing_layer2_nodes = []
+            if fragment_text:
+                try:
+                    # 使用fragment content生成embedding并召回已有Layer2节点
+                    fragment_embedding, _, _ = self.cache.get_or_generate_embedding(fragment_text)
+                    existing_candidates = self.cache.filter_and_search(
+                        fragment_embedding,
+                        filters={'layer': 2},  # 召回Layer2节点（event/state/context）
+                        top_k=10  # 召回top-10个已有节点
+                    )
+                    
+                    # 转换为节点格式
+                    for candidate in existing_candidates:
+                        node = candidate.get('node', {})
+                        if node:
+                            existing_layer2_nodes.append(node)
+                    
+                    print(f"✅ 召回了 {len(existing_layer2_nodes)} 个已有Layer2节点")
+                    if existing_layer2_nodes:
+                        node_types = {}
+                        for node in existing_layer2_nodes[:5]:
+                            node_type = node.get('type', 'unknown')
+                            node_types[node_type] = node_types.get(node_type, 0) + 1
+                        print(f"   类型分布: {dict(node_types)}")
+                except Exception as e:
+                    print(f"  ⚠️  召回已有Layer2节点失败: {e}")
+        else:
+            print(f"\n✅ 使用已召回的 {len(existing_layer2_nodes)} 个已有Layer2节点")
+        
+        # Phase 1: 提取时间线信息（包含关联判断，一次LLM调用）
+        print("\n🤖 Phase 1: 提取时间线信息（包含关联判断）...")
+        extraction_result = self.extractor.extract_from_fragment(
+            fragment, 
+            layer1_entities,
+            existing_layer2_nodes=existing_layer2_nodes
+        )
         
         events = extraction_result.get('events', [])
         states = extraction_result.get('states', [])
@@ -69,14 +108,18 @@ class Layer2Processor:
                 'contexts_created': 0
             }
         
-        # Phase 2: 批量创建节点（无冲突检测）
+        # Phase 2: 批量创建节点（处理link_to_existing）
         nodes_to_create = []
         event_ids = []
         state_ids = []
         context_ids = []
+        fragment_edges = []  # Fragment到Layer2节点的连接边 [(fragment_id, node_id, rel_type)]
         
         # 创建事件节点
         for event in events:
+            action = event.get('action', 'create_new')  # 默认为create_new
+            
+            if action == 'create_new':
             self.event_counter += 1
             event_id = f"event_{self.event_counter}"
             event_ids.append(event_id)
@@ -92,9 +135,24 @@ class Layer2Processor:
                 "layer": 2
             }
             nodes_to_create.append(node)
+                
+                # 创建fragment → 新事件的连接边
+                fragment_edges.append((fragment_id, event_id, "contains"))
+                
+                # 处理link_to_existing（新事件与已有事件建立关联）
+                link_to_existing = event.get('link_to_existing', [])
+                if link_to_existing:
+                    for existing_node_id in link_to_existing:
+                        if isinstance(existing_node_id, str):
+                            # 创建fragment → 已有事件的连接边（表示关联）
+                            fragment_edges.append((fragment_id, existing_node_id, "related_to"))
+                            print(f"  🔗 新事件 {event_id} 关联到已有事件 {existing_node_id}")
         
         # 创建状态节点
         for state in states:
+            action = state.get('action', 'create_new')  # 默认为create_new
+            
+            if action == 'create_new':
             self.state_counter += 1
             state_id = f"state_{self.state_counter}"
             state_ids.append(state_id)
@@ -110,9 +168,23 @@ class Layer2Processor:
                 "layer": 2
             }
             nodes_to_create.append(node)
+                
+                # 创建fragment → 新状态的连接边
+                fragment_edges.append((fragment_id, state_id, "contains"))
+                
+                # 处理link_to_existing
+                link_to_existing = state.get('link_to_existing', [])
+                if link_to_existing:
+                    for existing_node_id in link_to_existing:
+                        if isinstance(existing_node_id, str):
+                            fragment_edges.append((fragment_id, existing_node_id, "related_to"))
+                            print(f"  🔗 新状态 {state_id} 关联到已有状态 {existing_node_id}")
         
         # 创建上下文节点
         for context in contexts:
+            action = context.get('action', 'create_new')  # 默认为create_new
+            
+            if action == 'create_new':
             self.context_counter += 1
             context_id = f"context_{self.context_counter}"
             context_ids.append(context_id)
@@ -129,29 +201,27 @@ class Layer2Processor:
             }
             nodes_to_create.append(node)
         
-        # Phase 3: 批量添加到cache
+                # 创建fragment → 新上下文的连接边
+                fragment_edges.append((fragment_id, context_id, "occurs_in"))
+                
+                # 处理link_to_existing
+                link_to_existing = context.get('link_to_existing', [])
+                if link_to_existing:
+                    for existing_node_id in link_to_existing:
+                        if isinstance(existing_node_id, str):
+                            fragment_edges.append((fragment_id, existing_node_id, "related_to"))
+                            print(f"  🔗 新上下文 {context_id} 关联到已有上下文 {existing_node_id}")
+        
+        # Phase 3: 不立即添加到cache，而是返回节点（供后续统一批量生成embedding和写入Neo4j）
         if nodes_to_create:
-            print(f"\n📦 批量创建 {len(nodes_to_create)} 个时间线节点...")
-            self.cache.batch_add_nodes(nodes_to_create)
+            print(f"\n📦 准备创建 {len(nodes_to_create)} 个时间线节点...")
         
-        # Phase 4: 保存到storage并创建连接边
-        print(f"\n💾 保存到storage...")
+        # Phase 4: 准备结构性边信息（Layer2节点到Entity的边）
+        structural_edges = []  # Layer2节点到Entity的结构性边 [(source_id, target_id, rel_type)]
         
-        # 保存事件
+        # 准备事件到Entity的边
         for i, event_id in enumerate(event_ids):
             event_data = events[i]
-            node = {
-                "id": event_id,
-                "content": event_data.get('content', ''),
-                "participants": event_data.get('participants', []),
-                "location": event_data.get('location'),
-                "conversation_time": event_data.get('conversation_time'),
-                "relative_time": event_data.get('relative_time')
-            }
-            self.storage.save_timeline_node(node, namespace, "event")
-            self.storage.create_fragment_connection_edge(
-                fragment_id, event_id, "contains", namespace
-            )
             
             # 创建event -> entity的参与者边（结构性边，无content）
             participants = event_data.get('participants', [])
@@ -160,27 +230,13 @@ class Layer2Processor:
                     # 查找匹配的entity
                     matched_entities = self._find_matching_entities(participant, layer1_entities)
                     for entity_id in matched_entities:
-                        self.storage.create_structural_edge(
-                            event_id, entity_id, "involves", namespace
-                        )
+                        structural_edges.append((event_id, entity_id, "involves"))
             
-            print(f"  ✅ 创建事件: {event_data.get('content', '')[:50]}...")
+            print(f"  ✅ 准备事件: {event_data.get('content', '')[:50]}...")
         
-        # 保存状态
+        # 准备状态到Entity的边
         for i, state_id in enumerate(state_ids):
             state_data = states[i]
-            node = {
-                "id": state_id,
-                "content": state_data.get('content', ''),
-                "participants": state_data.get('participants', []),
-                "conversation_time": state_data.get('conversation_time'),
-                "relative_time": state_data.get('relative_time'),
-                "duration": state_data.get('duration')
-            }
-            self.storage.save_timeline_node(node, namespace, "state")
-            self.storage.create_fragment_connection_edge(
-                fragment_id, state_id, "contains", namespace
-            )
             
             # 创建state -> entity的参与者边
             participants = state_data.get('participants', [])
@@ -188,27 +244,13 @@ class Layer2Processor:
                 if participant:
                     matched_entities = self._find_matching_entities(participant, layer1_entities)
                     for entity_id in matched_entities:
-                        self.storage.create_structural_edge(
-                            state_id, entity_id, "describes", namespace
-                        )
+                        structural_edges.append((state_id, entity_id, "describes"))
             
-            print(f"  ✅ 创建状态: {state_data.get('content', '')[:50]}...")
+            print(f"  ✅ 准备状态: {state_data.get('content', '')[:50]}...")
         
-        # 保存上下文
+        # 准备上下文到Entity的边
         for i, context_id in enumerate(context_ids):
             context_data = contexts[i]
-            node = {
-                "id": context_id,
-                "content": context_data.get('content', ''),
-                "affected_entities": context_data.get('affected_entities', []),
-                "conversation_time": context_data.get('conversation_time'),
-                "relative_time": context_data.get('relative_time'),
-                "impact": context_data.get('impact')
-            }
-            self.storage.save_timeline_node(node, namespace, "context")
-            self.storage.create_fragment_connection_edge(
-                fragment_id, context_id, "occurs_in", namespace
-            )
             
             # 创建context -> entity的影响边
             affected_entities = context_data.get('affected_entities', [])
@@ -216,18 +258,19 @@ class Layer2Processor:
                 if affected_entity:
                     matched_entities = self._find_matching_entities(affected_entity, layer1_entities)
                     for entity_id in matched_entities:
-                        self.storage.create_structural_edge(
-                            context_id, entity_id, "affects", namespace
-                        )
+                        structural_edges.append((context_id, entity_id, "affects"))
             
-            print(f"  ✅ 创建上下文: {context_data.get('content', '')[:50]}...")
+            print(f"  ✅ 准备上下文: {context_data.get('content', '')[:50]}...")
         
         print(f"\n✅ Layer2处理完成")
         
         return {
             'events_created': len(event_ids),
             'states_created': len(state_ids),
-            'contexts_created': len(context_ids)
+            'contexts_created': len(context_ids),
+            'created_nodes': nodes_to_create,  # 返回节点列表
+            'fragment_edges': fragment_edges,  # Fragment到Layer2节点的连接边
+            'structural_edges': structural_edges  # Layer2节点到Entity的结构性边
         }
     
     def _find_matching_entities(self, entity_name: str, layer1_entities: List[Dict]) -> List[str]:
