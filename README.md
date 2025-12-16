@@ -57,10 +57,12 @@ HAmem/
 ├── ⚙️ config.py               # Configuration
 ├── 🚀 main.py                 # Entry point
 ├── 📋 requirements.txt        # Dependencies
-└── 🛠️ tools/                  # Utility scripts
-    ├── calculate_token_count.py # Token calculation (estimation)
-    ├── calculate_token_and_time_real.py # Token calculation (real API calls)
-    └── clear_neo4j.py         # Neo4j cleanup utility
+├── 📚 InputConfig.py          # Flexible LLM/Embedding configuration
+├── 📖 INPUT_FORMAT.md         # Input format specification
+├── 📖 CONFIG_GUIDE.md         # Configuration guide
+└── 🧪 experiment/             # Experiment scripts
+    ├── run_locomo.py          # One-click locomo experiment runner
+    └── calculate_token_and_time_real.py # Token & time calculation
 ```
 
 ### Hybrid Search Architecture
@@ -101,13 +103,21 @@ docker run -d \
 
 ### 3. Configure API Keys and Neo4j
 
-#### Method 1: Using .env file (Recommended)
+#### Method 1: Using .env file with Unified Configuration (推荐)
 ```bash
 # Create .env file in HAmem directory
 cat > .env << EOF
-# API Keys
-OPENAI_API_KEY=your-openai-api-key
-DEEPSEEK_API_KEY=your-deepseek-api-key
+# LLM Configuration (统一配置接口)
+LLM_API_KEY=your-api-key
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
+LLM_PROVIDER=deepseek
+
+# Embedding Configuration (统一配置接口)
+EMBEDDING_API_KEY=your-api-key
+EMBEDDING_BASE_URL=https://api.openai.com/v1
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_PROVIDER=openai
 
 # Neo4j Configuration
 NEO4J_URI=neo4j://localhost:7687
@@ -119,7 +129,9 @@ USE_HYBRID_SEARCH=true
 EOF
 ```
 
-#### Method 2: Environment Variables (统一配置接口，推荐)
+**注意**：旧的配置方式（`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`）仍然支持，系统会自动向后兼容。详细配置说明请参考 [CONFIG_GUIDE.md](CONFIG_GUIDE.md)。
+
+#### Method 2: Environment Variables (统一配置接口)
 ```bash
 # LLM配置（统一接口）
 export LLM_API_KEY="your-api-key"
@@ -145,13 +157,66 @@ export USE_HYBRID_SEARCH="true"
 
 ### 4. Basic Usage
 
+#### 输入格式
+
+HAmem 支持多种输入格式，系统会自动识别和转换。**推荐使用 HAmem 标准格式**。
+
+**HAmem 标准格式（推荐）**：
+```python
+conversation_data = {
+    "messages": [
+        {
+            "speaker": "user",
+            "content": "用户消息内容",
+            "timestamp": "2024-01-01T10:00:00"
+        },
+        {
+            "speaker": "assistant",
+            "content": "助手回复内容",
+            "timestamp": "2024-01-01T10:00:05"
+        }
+    ]
+}
+```
+
+**支持的格式**：
+- ✅ HAmem 标准格式（推荐）
+- ✅ Messages 格式（类似 OpenAI Chat API）
+- ✅ Locomo 格式
+- ✅ Sessions 格式
+- ✅ Batch 格式
+
+详细格式说明请参考 [INPUT_FORMAT.md](INPUT_FORMAT.md)。
+
+#### 使用示例
+
 ```python
 from main import HAmem
 
 # Initialize
 hamem = HAmem()
 
-# Build memory with namespace (multi-tenant support)
+# 方式1：从文件读取（自动识别格式）
+result = hamem.build_memory_from_file("conversation.json", namespace="my_project")
+
+# 方式2：直接传入数据（HAmem 标准格式）
+conversation_data = {
+    "messages": [
+        {
+            "speaker": "user",
+            "content": "用户消息",
+            "timestamp": "2024-01-01T10:00:00"
+        },
+        {
+            "speaker": "assistant",
+            "content": "助手回复",
+            "timestamp": "2024-01-01T10:00:05"
+        }
+    ]
+}
+result = hamem.build_memory(conversation_data, namespace="my_project")
+
+# 方式3：使用其他格式（系统会自动转换）
 conversation_data = {
     "sessions": [
         {
@@ -171,6 +236,7 @@ conversation_data = {
         }
     ]
 }
+result = hamem.build_memory(conversation_data, namespace="my_project")
 
 # Build memory (namespace for data isolation)
 namespace = "project_1"
@@ -396,14 +462,18 @@ hamem = HAmem(config)
 
 ## 🛠️ Utility Tools
 
-### Token Calculation
+### Locomo Experiment (推荐)
 ```bash
-# Estimate token usage (fast, no API calls)
-python calculate_token_count.py <conversation_idx> [dataset_path]
+# 一键运行 locomo 实验（推荐使用）
+python experiment/run_locomo.py <conversation_idx> [--provider {openai,deepseek}] [--dataset DATASET] [--skip-storage]
 
-# Real token calculation (accurate, uses API)
-python calculate_token_and_time_real.py <conversation_idx> [llm_provider] [dataset_path]
+# 示例
+python experiment/run_locomo.py 0
+python experiment/run_locomo.py 0 --provider deepseek
+python experiment/run_locomo.py 0 --dataset /path/to/locomo10.json
 ```
+
+详细使用说明请参考 [experiment/README.md](experiment/README.md)
 
 ### Neo4j Management
 ```bash
