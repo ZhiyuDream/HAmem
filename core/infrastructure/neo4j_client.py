@@ -154,7 +154,7 @@ class Neo4jClient:
             raise RuntimeError("Neo4j driver not initialized. Call connect() first.")
         
         with self.driver.session(database=self.database) as session:
-            result = session.write_transaction(
+            result = session.execute_write(
                 lambda tx: list(tx.run(query, parameters or {}))
             )
             return [record.data() for record in result]
@@ -174,7 +174,7 @@ class Neo4jClient:
             raise RuntimeError("Neo4j driver not initialized. Call connect() first.")
         
         with self.driver.session(database=self.database) as session:
-            result = session.read_transaction(
+            result = session.execute_read(
                 lambda tx: list(tx.run(query, parameters or {}))
             )
             return [record.data() for record in result]

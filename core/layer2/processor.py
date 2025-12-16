@@ -120,21 +120,21 @@ class Layer2Processor:
             action = event.get('action', 'create_new')  # 默认为create_new
             
             if action == 'create_new':
-            self.event_counter += 1
-            event_id = f"event_{self.event_counter}"
-            event_ids.append(event_id)
-            
-            node = {
-                "id": event_id,
-                "type": "event",
-                "content": event.get('content', ''),
-                "participants": event.get('participants', []),
-                "location": event.get('location'),
-                "conversation_time": event.get('conversation_time'),
-                "relative_time": event.get('relative_time'),
-                "layer": 2
-            }
-            nodes_to_create.append(node)
+                self.event_counter += 1
+                event_id = f"event_{self.event_counter}"
+                event_ids.append(event_id)
+                
+                node = {
+                    "id": event_id,
+                    "type": "event",
+                    "content": event.get('content', ''),
+                    "participants": event.get('participants', []),
+                    "location": event.get('location'),
+                    "conversation_time": event.get('conversation_time'),
+                    "relative_time": event.get('relative_time'),
+                    "layer": 2
+                }
+                nodes_to_create.append(node)
                 
                 # 创建fragment → 新事件的连接边
                 fragment_edges.append((fragment_id, event_id, "contains"))
@@ -153,21 +153,21 @@ class Layer2Processor:
             action = state.get('action', 'create_new')  # 默认为create_new
             
             if action == 'create_new':
-            self.state_counter += 1
-            state_id = f"state_{self.state_counter}"
-            state_ids.append(state_id)
-            
-            node = {
-                "id": state_id,
-                "type": "state",
-                "content": state.get('content', ''),
-                "participants": state.get('participants', []),
-                "conversation_time": state.get('conversation_time'),
-                "relative_time": state.get('relative_time'),
-                "duration": state.get('duration'),
-                "layer": 2
-            }
-            nodes_to_create.append(node)
+                self.state_counter += 1
+                state_id = f"state_{self.state_counter}"
+                state_ids.append(state_id)
+                
+                node = {
+                    "id": state_id,
+                    "type": "state",
+                    "content": state.get('content', ''),
+                    "participants": state.get('participants', []),
+                    "conversation_time": state.get('conversation_time'),
+                    "relative_time": state.get('relative_time'),
+                    "duration": state.get('duration'),
+                    "layer": 2
+                }
+                nodes_to_create.append(node)
                 
                 # 创建fragment → 新状态的连接边
                 fragment_edges.append((fragment_id, state_id, "contains"))
@@ -185,22 +185,22 @@ class Layer2Processor:
             action = context.get('action', 'create_new')  # 默认为create_new
             
             if action == 'create_new':
-            self.context_counter += 1
-            context_id = f"context_{self.context_counter}"
-            context_ids.append(context_id)
-            
-            node = {
-                "id": context_id,
-                "type": "context",
-                "content": context.get('content', ''),
-                "affected_entities": context.get('affected_entities', []),
-                "conversation_time": context.get('conversation_time'),
-                "relative_time": context.get('relative_time'),
-                "impact": context.get('impact'),
-                "layer": 2
-            }
-            nodes_to_create.append(node)
-        
+                self.context_counter += 1
+                context_id = f"context_{self.context_counter}"
+                context_ids.append(context_id)
+                
+                node = {
+                    "id": context_id,
+                    "type": "context",
+                    "content": context.get('content', ''),
+                    "affected_entities": context.get('affected_entities', []),
+                    "conversation_time": context.get('conversation_time'),
+                    "relative_time": context.get('relative_time'),
+                    "impact": context.get('impact'),
+                    "layer": 2
+                }
+                nodes_to_create.append(node)
+                
                 # 创建fragment → 新上下文的连接边
                 fragment_edges.append((fragment_id, context_id, "occurs_in"))
                 

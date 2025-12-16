@@ -64,8 +64,8 @@ class Layer2Extractor:
                 # 记录token使用情况
                 self.token_tracker.record_llm_call("layer2_extraction", usage, provider=provider, context=fragment.get('id'))
             else:
-            response = self.llm_client.call_llm(
-                prompt,
+                response = self.llm_client.call_llm(
+                    prompt,
                     provider=provider
             )
             

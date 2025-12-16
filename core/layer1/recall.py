@@ -95,11 +95,11 @@ class Layer1Recall:
         
         # 首先尝试从cache（FAISS）召回（优先，因为cache中有当前处理过程中累积的实体）
         try:
-        similar_entities = self.cache.filter_and_search(
-            entity_embedding,
-            filters={'type': 'entity', 'layer': 1},
+            similar_entities = self.cache.filter_and_search(
+                entity_embedding,
+                filters={'type': 'entity', 'layer': 1},
                 top_k=10
-        )
+            )
         
         # 过滤：相似度阈值
             cache_candidates = [
@@ -266,11 +266,11 @@ class Layer1Recall:
             
             # 首先尝试从cache（FAISS）召回
             try:
-            similar_entities = self.cache.filter_and_search(
-                entity_embedding,
-                filters={'type': 'entity', 'layer': 1},
-                top_k=10
-            )
+                similar_entities = self.cache.filter_and_search(
+                    entity_embedding,
+                    filters={'type': 'entity', 'layer': 1},
+                    top_k=10
+                )
             
             # 过滤：相似度阈值
                 cache_candidates = [

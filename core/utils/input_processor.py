@@ -214,7 +214,6 @@ def convert_locomo_to_hamem(conversation_data: Dict[str, Any]) -> Dict[str, Any]
         }
     }
 
-
 def validate_hamem_format(data: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
     """
     验证数据是否符合HAmem标准格式

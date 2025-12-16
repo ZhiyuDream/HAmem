@@ -62,10 +62,10 @@ class Layer3Extractor:
                 # 记录token使用情况
                 self.token_tracker.record_llm_call("layer3_pattern", usage, provider=self.default_provider)
             else:
-                response = self.llm_client.call_llm(
-                    prompt,
+            response = self.llm_client.call_llm(
+                prompt,
                     provider=self.default_provider
-                )
+            )
             
             # 解析响应
             result = self._parse_llm_response(response)
