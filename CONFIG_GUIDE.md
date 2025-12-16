@@ -2,18 +2,22 @@
 
 ## 快速开始
 
-### 方式1：使用环境变量（最简单）
+### 方式1：使用统一配置接口（推荐，最简单）
 
 在 `.env` 文件中设置：
 
 ```bash
-# LLM配置
-DEEPSEEK_API_KEY=your-deepseek-key
+# LLM配置（统一接口）
+LLM_API_KEY=your-api-key
+LLM_BASE_URL=https://api.deepseek.com
 LLM_MODEL=deepseek-chat
+LLM_PROVIDER=deepseek
 
-# Embedding配置
-OPENAI_API_KEY=your-openai-key
+# Embedding配置（统一接口）
+EMBEDDING_API_KEY=your-api-key
+EMBEDDING_BASE_URL=https://api.openai.com/v1
 EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_PROVIDER=openai
 ```
 
 然后在代码中：
@@ -24,6 +28,20 @@ from main import HAmem
 
 config = Config()
 hamem = HAmem(config)
+```
+
+### 方式1.5：向后兼容（旧配置方式仍支持）
+
+如果你使用旧的配置方式，系统会自动兼容：
+
+```bash
+# 旧配置方式（仍支持）
+DEEPSEEK_API_KEY=your-deepseek-key
+DEEPSEEK_BASE_URL=https://api.deepseek.com
+OPENAI_API_KEY=your-openai-key
+OPENAI_BASE_URL=https://api.openai.com/v1
+LLM_MODEL=deepseek-chat
+EMBEDDING_MODEL=text-embedding-3-small
 ```
 
 ### 方式2：代码中直接配置（推荐）

@@ -119,16 +119,29 @@ USE_HYBRID_SEARCH=true
 EOF
 ```
 
-#### Method 2: Environment Variables
+#### Method 2: Environment Variables (统一配置接口，推荐)
 ```bash
-export OPENAI_API_KEY="your-openai-api-key"
-export DEEPSEEK_API_KEY="your-deepseek-api-key"
+# LLM配置（统一接口）
+export LLM_API_KEY="your-api-key"
+export LLM_BASE_URL="https://api.deepseek.com"
+export LLM_MODEL="deepseek-chat"
+export LLM_PROVIDER="deepseek"
+
+# Embedding配置（统一接口）
+export EMBEDDING_API_KEY="your-api-key"
+export EMBEDDING_BASE_URL="https://api.openai.com/v1"
+export EMBEDDING_MODEL="text-embedding-3-small"
+export EMBEDDING_PROVIDER="openai"
+
+# Neo4j配置
 export NEO4J_URI="neo4j://localhost:7687"
 export NEO4J_USERNAME="neo4j"
 export NEO4J_PASSWORD="your-neo4j-password"
 export USE_NEO4J="true"
 export USE_HYBRID_SEARCH="true"
 ```
+
+**注意**：旧的配置方式（`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`）仍然支持，系统会自动向后兼容。
 
 ### 4. Basic Usage
 
@@ -250,16 +263,32 @@ async def process_fragments_async(fragments):
 ## 🔧 Configuration Options
 
 ### Environment Variables
+
+#### 统一配置接口（推荐）
 ```bash
-# API Configuration
+# LLM配置（统一接口）
+LLM_API_KEY=your-api-key
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
+LLM_PROVIDER=deepseek
+
+# Embedding配置（统一接口）
+EMBEDDING_API_KEY=your-api-key
+EMBEDDING_BASE_URL=https://api.openai.com/v1
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_PROVIDER=openai
+```
+
+#### 向后兼容配置（仍支持）
+```bash
+# 旧配置方式（仍支持，但推荐使用统一接口）
 OPENAI_API_KEY=your-api-key
 OPENAI_BASE_URL=https://api.openai.com/v1
 DEEPSEEK_API_KEY=your-deepseek-api-key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-
-# Model Configuration
 LLM_MODEL=deepseek-chat
 EMBEDDING_MODEL=text-embedding-3-small
+```
 
 # Neo4j Configuration
 NEO4J_URI=neo4j://localhost:7687
@@ -320,14 +349,18 @@ config = Config(
 hamem = HAmem(config)
 ```
 
-#### 方式2：使用环境变量（向后兼容）
+#### 方式2：使用环境变量（推荐，最简单）
 ```python
 from config import Config
 
-# 自动从环境变量加载（支持旧配置方式）
+# 自动从环境变量加载（优先使用统一配置接口，也支持旧配置方式）
 config = Config()
 hamem = HAmem(config)
 ```
+
+**环境变量优先级**：
+1. 统一配置接口（`LLM_API_KEY`、`EMBEDDING_API_KEY`）- 推荐使用
+2. 旧配置方式（`OPENAI_API_KEY`、`DEEPSEEK_API_KEY`）- 向后兼容
 
 #### 方式3：混合配置
 ```python

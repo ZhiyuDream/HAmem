@@ -20,12 +20,22 @@ class Config:
     llm_config: Optional['LlmConfig'] = None
     embedding_config: Optional['EmbeddingConfig'] = None
     
+    # 新的统一配置接口（推荐使用）
+    llm_api_key: str = os.getenv('LLM_API_KEY', '')
+    llm_base_url: str = os.getenv('LLM_BASE_URL', '')
+    llm_model: str = os.getenv('LLM_MODEL', 'deepseek-chat')
+    llm_provider: str = os.getenv('LLM_PROVIDER', 'deepseek')  # 默认提供商
+    
+    embedding_api_key: str = os.getenv('EMBEDDING_API_KEY', '')
+    embedding_base_url: str = os.getenv('EMBEDDING_BASE_URL', '')
+    embedding_model: str = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
+    embedding_provider: str = os.getenv('EMBEDDING_PROVIDER', 'openai')  # 默认提供商
+    
+    # 向后兼容：保留旧的配置字段（如果新配置未设置，将从这些字段读取）
     openai_api_key: str = os.getenv('OPENAI_API_KEY', '')
     openai_base_url: str = os.getenv('OPENAI_BASE_URL', '')
     deepseek_api_key: str = os.getenv('DEEPSEEK_API_KEY', '')
     deepseek_base_url: str = os.getenv('DEEPSEEK_BASE_URL', '')
-    llm_model: str = os.getenv('LLM_MODEL', 'deepseek-chat')
-    embedding_model: str = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
     
     # 性能
     max_retries: int = int(os.getenv('MAX_RETRIES', '3'))
@@ -61,12 +71,35 @@ class Config:
     log_level: str = os.getenv('LOG_LEVEL', 'INFO')
     
     def __post_init__(self):
-        """初始化后处理：如果新配置未提供，从旧配置自动创建"""
+        """初始化后处理：优先从新统一配置创建，如果未设置则从旧配置自动创建（向后兼容）"""
         from InputConfig import LlmConfig, EmbeddingConfig, ProviderConfig
         
-        # 如果未提供llm_config，从旧配置创建
+        # 如果未提供llm_config，从环境变量创建
         if self.llm_config is None:
-            if self.deepseek_api_key:
+            # 优先使用新的统一配置接口
+            if self.llm_api_key:
+                # 根据 provider 设置默认 base_url
+                default_base_urls = {
+                    'openai': 'https://api.openai.com/v1',
+                    'deepseek': 'https://api.deepseek.com',
+                    'anthropic': 'https://api.anthropic.com',
+                    'groq': 'https://api.groq.com/openai/v1',
+                    'together': 'https://api.together.xyz/v1',
+                    'xai': 'https://api.x.ai/v1',
+                    'ollama': 'http://localhost:11434/v1',
+                }
+                base_url = self.llm_base_url or default_base_urls.get(self.llm_provider, '')
+                
+                self.llm_config = LlmConfig(
+                    provider=self.llm_provider,
+                    config=ProviderConfig(
+                        api_key=self.llm_api_key,
+                        base_url=base_url,
+                        model=self.llm_model
+                    )
+                )
+            # 向后兼容：如果新配置未设置，尝试从旧配置创建
+            elif self.deepseek_api_key:
                 self.llm_config = LlmConfig(
                     provider="deepseek",
                     config=ProviderConfig(
@@ -85,15 +118,37 @@ class Config:
                     )
                 )
             else:
-                # 尝试从环境变量创建
+                # 最后尝试从环境变量自动创建
                 try:
                     self.llm_config = LlmConfig.from_env()
                 except:
                     pass
         
-        # 如果未提供embedding_config，从旧配置创建
+        # 如果未提供embedding_config，从环境变量创建
         if self.embedding_config is None:
-            if self.openai_api_key:
+            # 优先使用新的统一配置接口
+            if self.embedding_api_key:
+                # 根据 provider 设置默认 base_url
+                default_base_urls = {
+                    'openai': 'https://api.openai.com/v1',
+                    'deepseek': 'https://api.deepseek.com',
+                    'azure_openai': 'https://api.openai.com/v1',
+                    'together': 'https://api.together.xyz/v1',
+                    'ollama': 'http://localhost:11434/v1',
+                }
+                base_url = self.embedding_base_url or default_base_urls.get(self.embedding_provider, '')
+                
+                self.embedding_config = EmbeddingConfig(
+                    provider=self.embedding_provider,
+                    config=ProviderConfig(
+                        api_key=self.embedding_api_key,
+                        base_url=base_url,
+                        model=self.embedding_model,
+                        additional_params={'dimensions': 1536} if self.embedding_provider == 'openai' else {}
+                    )
+                )
+            # 向后兼容：如果新配置未设置，尝试从旧配置创建
+            elif self.openai_api_key:
                 self.embedding_config = EmbeddingConfig(
                     provider="openai",
                     config=ProviderConfig(
@@ -104,7 +159,7 @@ class Config:
                     )
                 )
             else:
-                # 尝试从环境变量创建
+                # 最后尝试从环境变量自动创建
                 try:
                     self.embedding_config = EmbeddingConfig.from_env()
                 except:
