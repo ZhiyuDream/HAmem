@@ -626,7 +626,7 @@ class UnifiedCache:
             # 对于layer过滤，搜索更多候选（因为可能大部分节点都不是目标layer）
             k_candidates = min(top_k * 50, self.faiss_index.ntotal)
         else:
-        k_candidates = min(top_k * 5, self.faiss_index.ntotal)
+            k_candidates = min(top_k * 5, self.faiss_index.ntotal)
         
         D, I = self.faiss_index.search(query_array, k=k_candidates)
         

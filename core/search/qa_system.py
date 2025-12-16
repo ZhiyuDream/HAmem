@@ -165,20 +165,20 @@ class QASystem:
             
             # 2.2: Try to answer directly (LLM will automatically select appropriate modules)
             print(f"  🚀 Attempting to generate answer directly...")
-                
-                # Get fragments
-                all_fragments = self.recall.get_fragments_by_nodes(
-                    [n['id'] for n in current_nodes]
-                )
-                
-                # Build context
-                context = {
-                    'layer1': [n for n in current_nodes if n.get('layer') == 1],
-                    'layer2': [n for n in current_nodes if n.get('layer') == 2],
-                    'layer3': [n for n in current_nodes if n.get('layer') == 3],
-                    'edges': all_edges + connecting_edges,
-                    'fragments': all_fragments
-                }
+            
+            # Get fragments
+            all_fragments = self.recall.get_fragments_by_nodes(
+                [n['id'] for n in current_nodes]
+            )
+            
+            # Build context
+            context = {
+                'layer1': [n for n in current_nodes if n.get('layer') == 1],
+                'layer2': [n for n in current_nodes if n.get('layer') == 2],
+                'layer3': [n for n in current_nodes if n.get('layer') == 3],
+                'edges': all_edges + connecting_edges,
+                'fragments': all_fragments
+            }
                 
             # Try to answer directly (LLM will automatically select appropriate modules)
             # Pass all modules so LLM can choose which ones to apply
@@ -189,8 +189,8 @@ class QASystem:
                 context, 
                 selected_modules=all_modules  # 让LLM自动选择和应用
             )
-                stats['llm_calls'] += 1
-                
+            stats['llm_calls'] += 1
+            
             answer = answer_result.get('answer', '')
             reason = answer_result.get('reason', '')
             
@@ -312,10 +312,10 @@ class QASystem:
                         break
                 else:
                     # 降级到原有的expansion方法
-            expanded_nodes, expanded_edges = self.expansion.expand_nodes(
-                nodes_to_expand,
-                max_neighbors=20
-            )
+                    expanded_nodes, expanded_edges = self.expansion.expand_nodes(
+                        nodes_to_expand,
+                        max_neighbors=20
+                    )
             
             if not expanded_nodes:
                 print(f"  ⚠️  Expansion yielded no new nodes, stop")
@@ -332,10 +332,10 @@ class QASystem:
             
             print(f"  ✅ Expanded {len(new_nodes)} new nodes")
             if new_nodes:
-                        new_node_ids = [n['id'] for n in new_nodes]
-                        print(f"     Expanded node IDs: {new_node_ids} (共 {len(new_node_ids)} 个)")
-                    # 继续下一轮循环，重新尝试生成答案
-                    continue
+                new_node_ids = [n['id'] for n in new_nodes]
+                print(f"     Expanded node IDs: {new_node_ids} (共 {len(new_node_ids)} 个)")
+                # 继续下一轮循环，重新尝试生成答案
+                continue
         
         # Stage 3: Final answer generation
         print(f"\n📍 Stage 3: Final answer generation")
