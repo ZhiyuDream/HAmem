@@ -55,10 +55,7 @@ class Layer1Extractor:
                 # 记录token使用情况
                 self.token_tracker.record_llm_call("layer1_extraction", usage, provider=provider, context=fragment.get('id'))
             else:
-            response = self.llm_client.call_llm(
-                prompt, 
-                    provider=provider
-            )
+                response = self.llm_client.call_llm(prompt, provider=provider)
             
             # 解析响应
             result = self._parse_llm_response(response)

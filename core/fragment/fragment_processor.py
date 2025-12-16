@@ -64,19 +64,16 @@ class FragmentProcessor:
                 # 记录token使用情况
                 self.token_tracker.record_llm_call("fragment_splitting", usage, provider=provider)
             else:
-            response = self.llm_client.call_llm(
-                prompt, 
-                    provider=provider
-            )
+                response = self.llm_client.call_llm( prompt, provider=provider)
             
-            print(f"🤖 LLM响应: {response[:200]}...")
+            print(f"LLM响应: {response[:200]}...")
             
             # 解析响应
             split_point = self._parse_llm_response(response)
             return split_point
             
         except Exception as e:
-            print(f"❌ 分片判断失败: {e}")
+            print(f"分片判断失败: {e}")
             import traceback
             traceback.print_exc()
             return None

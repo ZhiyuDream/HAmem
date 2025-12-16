@@ -62,8 +62,8 @@ class QASystem:
             self.expansion = GraphExpansion(storage, cache)
         else:
             # 使用原有检索
-        self.recall = SearchRecall(cache, storage)
-        self.expansion = GraphExpansion(storage, cache)
+            self.recall = SearchRecall(cache, storage)
+            self.expansion = GraphExpansion(storage, cache)
         
         self.router = QuestionRouter(llm_client, default_provider=default_provider)
         self.answer_generator = AnswerGenerator(llm_client, default_provider=default_provider)

@@ -1,7 +1,7 @@
 """
 LLM调用模块
 
-支持OpenAI和DeepSeek两种模型调用
+支持多种LLM提供商（OpenAI、DeepSeek、Anthropic、Ollama等）
 """
 
 import os
@@ -23,49 +23,79 @@ class LLMClient:
             token_tracker: Token统计收集器（可选），用于自动记录token使用情况
         """
         self.config = config
-        self.openai_client = None
-        self.deepseek_client = None
-        self.token_tracker = token_tracker  # Token统计收集器
-        self._init_clients()
+        self.llm_config = config.llm_config
+        self.clients = {}  # 存储不同提供商的客户端
+        self.token_tracker = token_tracker
+        self._init_client()
     
-    def _init_clients(self):
+    def _init_client(self):
         """初始化客户端"""
-        # OpenAI客户端
-        if self.config.openai_api_key:
-            self.openai_client = OpenAI(
-                api_key=self.config.openai_api_key,
-                base_url=self.config.openai_base_url,
-                timeout=60.0
-            )
+        if not self.llm_config:
+            raise ValueError("LLM配置未提供")
         
-        # DeepSeek客户端
-        if self.config.deepseek_api_key:
-            self.deepseek_client = OpenAI(
-                api_key=self.config.deepseek_api_key,
-                base_url=self.config.deepseek_base_url,
-                timeout=60.0
+        provider = self.llm_config.provider
+        provider_config = self.llm_config.config
+        
+        # 根据提供商初始化客户端
+        if provider in ['openai', 'deepseek', 'anthropic', 'groq', 'together', 'azure_openai', 'xai', 'lmstudio', 'litellm']:
+            # 这些提供商使用OpenAI兼容的API
+            base_url = self.llm_config.get_base_url()
+            if not base_url:
+                # 根据提供商设置默认base_url
+                if provider == 'openai':
+                    base_url = 'https://api.openai.com/v1'
+                elif provider == 'deepseek':
+                    base_url = 'https://api.deepseek.com'
+                elif provider == 'anthropic':
+                    base_url = 'https://api.anthropic.com'
+                elif provider == 'groq':
+                    base_url = 'https://api.groq.com/openai/v1'
+                elif provider == 'together':
+                    base_url = 'https://api.together.xyz/v1'
+                elif provider == 'xai':
+                    base_url = 'https://api.x.ai/v1'
+                elif provider == 'lmstudio':
+                    base_url = 'http://localhost:1234/v1'
+              
+            self.clients[provider] = OpenAI(
+                api_key=self.llm_config.get_api_key(),
+                base_url=base_url,
+                timeout=provider_config.timeout or 60.0
             )
+        elif provider == 'ollama':
+            # Ollama使用本地API
+            base_url = self.llm_config.get_base_url() or 'http://localhost:11434/v1'
+            self.clients[provider] = OpenAI(
+                api_key='ollama',  # Ollama不需要真实的API key
+                base_url=base_url,
+                timeout=provider_config.timeout or 60.0
+            )
+        else:
+            raise ValueError(f"不支持的LLM提供商: {provider}")
     
-    def call_llm(self, prompt: str, model: str = None, provider: str = "deepseek", return_usage: bool = False):
+    def call_llm(self, prompt: str, model: str = None, provider: str = None, return_usage: bool = False):
         """
         调用LLM API
         
         Args:
             prompt: 输入提示
             model: 模型名称，如果为None则使用配置中的默认模型
-            provider: 提供商 ("openai" 或 "deepseek")
+            provider: 提供商，如果为None则使用配置中的提供商
             return_usage: 是否返回token使用信息
         
         Returns:
             str 或 tuple: 如果return_usage=False，返回模型回复内容；如果return_usage=True，返回(content, usage_dict)
         """
         try:
-            if provider == "openai":
-                return self._call_openai(prompt, model, return_usage)
-            elif provider == "deepseek":
-                return self._call_deepseek(prompt, model, return_usage)
-            else:
-                raise ValueError(f"不支持的提供商: {provider}")
+            # 使用配置中的提供商（如果未指定）
+            if provider is None:
+                provider = self.llm_config.provider
+            
+            # 使用配置中的模型（如果未指定）
+            if model is None:
+                model = self.llm_config.get_model()
+            
+            return self._call_provider(prompt, model, provider, return_usage)
         
         except Exception as e:
             print(f"❌ LLM API调用失败: {e}")
@@ -73,70 +103,43 @@ class LLMClient:
                 return ("", {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0})
             return ""
     
-    def _call_openai(self, prompt: str, model: str = None, return_usage: bool = False):
-        """调用OpenAI API"""
-        if not self.openai_client:
-            raise ValueError("OpenAI客户端未初始化，请检查API密钥")
+    def _call_provider(self, prompt: str, model: str, provider: str, return_usage: bool = False):
+        """调用指定提供商的API"""
+        if provider not in self.clients:
+            raise ValueError(f"提供商 {provider} 的客户端未初始化，请检查配置")
         
-        if not model:
-            model = "gpt-4o-mini"  # OpenAI默认模型
+        client = self.clients[provider]
+        provider_config = self.llm_config.config
         
+        # 构建请求参数
         messages = [{"role": "user", "content": prompt}]
+        params = {
+            "model": model,
+            "messages": messages,
+            "temperature": provider_config.temperature or 0.1,
+            "max_tokens": provider_config.max_tokens or 2000
+        }
         
-        response = self.openai_client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.1,
-            max_tokens=2000
-        )
+        # 添加额外参数（如Azure的api_version）
+        if provider_config.additional_params:
+            params.update(provider_config.additional_params)
         
-        content = response.choices[0].message.content.strip()
-    
-        if return_usage:
-            usage = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens
-            }
-            # 不在这里自动记录token，由调用者自己决定如何记录（通过token_tracker.record_llm_call）
-            # 因为LLMClient无法知道调用类型，不应该硬编码为"fragment_splitting"
-            return (content, usage)
-        
-        return content
-    
-    def _call_deepseek(self, prompt: str, model: str = None, return_usage: bool = False):
-        """调用DeepSeek API"""
-        if not self.deepseek_client:
-            raise ValueError("DeepSeek客户端未初始化，请检查API密钥")
-        
-        if not model:
-            model = self.config.llm_model  # 使用配置中的DeepSeek模型
-        
-        messages = [{"role": "user", "content": prompt}]
-        
-        response = self.deepseek_client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=0.1,
-            max_tokens=2000
-        )
+        # 调用API
+        response = client.chat.completions.create(**params)
         
         content = response.choices[0].message.content.strip()
         
         if return_usage:
-            # DeepSeek API也返回usage信息
             usage = {
                 "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') and response.usage else 0,
                 "completion_tokens": response.usage.completion_tokens if hasattr(response, 'usage') and response.usage else 0,
                 "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') and response.usage else 0
             }
-            # 不在这里自动记录token，由调用者自己决定如何记录（通过token_tracker.record_llm_call）
-            # 因为LLMClient无法知道调用类型，不应该硬编码为"fragment_splitting"
             return (content, usage)
         
         return content
     
-    def batch_call_llm(self, prompts: List[str], model: str = None, provider: str = "deepseek") -> List[str]:
+    def batch_call_llm(self, prompts: List[str], model: str = None, provider: str = None) -> List[str]:
         """
         批量调用LLM API
         
@@ -157,12 +160,12 @@ class LLMClient:
         
         return results
     
-    def test_connection(self, provider: str = "deepseek") -> bool:
+    def test_connection(self, provider: str = None) -> bool:
         """
         测试连接是否正常
         
         Args:
-            provider: 提供商
+            provider: 提供商，如果为None则使用配置中的提供商
         
         Returns:
             bool: 连接是否正常

@@ -120,16 +120,34 @@ class HAmem:
             print(f"✅ Answer generated")
             return answer
         else:
-        print(f"✅ Answer generated with confidence: {answer.confidence}")
+            print(f"✅ Answer generated with confidence: {answer.confidence}")
         return answer.to_dict()
     
     def get_stats(self) -> Dict[str, Any]:
         """Get system stats"""
-        return {
+        stats = {
             'config': self.config.to_dict(),
-            'cache_stats': self.memory_builder.embedding_manager.cache.get_cache_stats(),
-            'storage_stats': self.storage.get_stats()
         }
+        
+        # 获取cache统计信息
+        if hasattr(self.memory_builder, 'cache') and self.memory_builder.cache:
+            try:
+                stats['cache_stats'] = self.memory_builder.cache.get_cache_stats()
+            except Exception as e:
+                stats['cache_stats'] = {'error': str(e)}
+        else:
+            stats['cache_stats'] = {}
+        
+        # 获取storage统计信息
+        if hasattr(self.storage, 'get_stats'):
+            try:
+                stats['storage_stats'] = self.storage.get_stats()
+            except Exception as e:
+                stats['storage_stats'] = {'error': str(e)}
+        else:
+            stats['storage_stats'] = {}
+        
+        return stats
 
 
 def main():
@@ -137,17 +155,31 @@ def main():
     print("🚀 HAmem - Hierarchical Memory System")
     print("=" * 50)
     
-    # Check API keys
+    # Check configuration
+    try:
     config = Config()
-    if not config.openai_api_key or not config.deepseek_api_key:
-        print("❌ Please configure API keys in .env file or environment variables")
-        print("   - OPENAI_API_KEY: For embeddings")
-        print("   - DEEPSEEK_API_KEY: For LLM calls")
+        config.validate()
+    except ValueError as e:
+        print(f"❌ Configuration error: {e}")
+        print("\n💡 Please configure API keys:")
+        print("   Option 1: Set environment variables")
+        print("     - OPENAI_API_KEY / DEEPSEEK_API_KEY")
+        print("   Option 2: Use new flexible config:")
+        print("     from InputConfig import LlmConfig, EmbeddingConfig")
+        print("     config = Config(")
+        print("         llm_config=LlmConfig.create_deepseek(api_key='...'),")
+        print("         embedding_config=EmbeddingConfig.create_openai(api_key='...')")
+        print("     )")
         return
     
-    print("✅ API configuration loaded")
-    print("   - OpenAI API: For embeddings")
-    print("   - DeepSeek API: For LLM calls")
+    # Show configuration
+    print("✅ Configuration loaded")
+    if config.llm_config:
+        print(f"   - LLM Provider: {config.llm_config.provider}")
+        print(f"   - LLM Model: {config.llm_config.get_model()}")
+    if config.embedding_config:
+        print(f"   - Embedding Provider: {config.embedding_config.provider}")
+        print(f"   - Embedding Model: {config.embedding_config.get_model()}")
     
     # Initialize HAmem
     try:
@@ -162,13 +194,14 @@ def main():
     print("result = hamem.build_memory(conversation_data)")
     print("answer = hamem.ask_question('What did we discuss?')")
     
-    # Show configuration
-    print(f"\n⚙️  Configuration:")
+    # Show full configuration
+    print(f"\n⚙️  Full Configuration:")
     stats = hamem.get_stats()
-    print(f"  - LLM Model: {stats['config']['llm_model']} (DeepSeek)")
-    print(f"  - Embedding Model: {stats['config']['embedding_model']} (OpenAI)")
-    print(f"  - Cache Directory: {stats['config']['cache_dir']}")
-    print(f"  - Max Workers: {stats['config']['max_workers']}")
+    config_dict = stats['config']
+    print(f"  - LLM: {config_dict.get('llm_provider', 'N/A')} / {config_dict.get('llm_model', 'N/A')}")
+    print(f"  - Embedding: {config_dict.get('embedding_provider', 'N/A')} / {config_dict.get('embedding_model', 'N/A')}")
+    print(f"  - Cache Directory: {config_dict.get('cache_dir', 'N/A')}")
+    print(f"  - Max Workers: {config_dict.get('max_workers', 'N/A')}")
 
 
 if __name__ == "__main__":
