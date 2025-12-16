@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import Config
 from memory import MemoryBuilder, ConversationData, StorageManager
 from retrieval import RetrievalEngine, create_qa_system
+from core.utils.input_processor import process_input_file
 
 
 class HAmem:
@@ -70,6 +71,25 @@ class HAmem:
         
         print(f"✅ Memory built: {result.total_fragments} fragments processed")
         return result.to_dict()
+    
+    def build_memory_from_file(self, file_path: str, namespace: str = "default") -> Dict[str, Any]:
+        """
+        Build memory from conversation file
+        
+        Args:
+            file_path: Path to conversation file (JSON format)
+            namespace: Namespace for storage isolation (will be used as Neo4j database name)
+        
+        Returns:
+            Memory build result dictionary
+        """
+        print(f"📂 Loading conversation from file: {file_path}")
+        
+        # Process input file (auto-detect format and convert to standard format)
+        conversation_data = process_input_file(file_path)
+        
+        # Build memory using standard format
+        return self.build_memory(conversation_data, namespace=namespace)
     
     def search_memory(self, query: str, top_k: int = 10, namespace: str = "default") -> List[Dict[str, Any]]:
         """Search memory"""
