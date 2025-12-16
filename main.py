@@ -157,7 +157,7 @@ def main():
     
     # Check configuration
     try:
-    config = Config()
+        config = Config()
         config.validate()
     except ValueError as e:
         print(f"❌ Configuration error: {e}")
