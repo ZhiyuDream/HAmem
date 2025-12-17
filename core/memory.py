@@ -226,14 +226,13 @@ class MemoryBuilder:
             default_provider=llm_provider
         )
         
-        # 更新Layer2Processor的extractor以使用正确的provider
-        if token_tracker:
-            from core.layer2.extractor import Layer2Extractor
-            self.layer2_processor.extractor = Layer2Extractor(
-                self.llm_client,
-                default_provider=llm_provider,
-                token_tracker=token_tracker
-            )
+        # 更新Layer2Processor的extractor以使用正确的provider（无论是否有token_tracker都要更新）
+        from core.layer2.extractor import Layer2Extractor
+        self.layer2_processor.extractor = Layer2Extractor(
+            self.llm_client,
+            default_provider=llm_provider,
+            token_tracker=token_tracker
+        )
         
         # 更新Layer3Processor的extractor以使用正确的provider
         from core.layer3.extractor import Layer3Extractor
@@ -269,10 +268,11 @@ class MemoryBuilder:
         # 流式处理：每个fragment处理完后立即批量生成embedding并写入Neo4j
         total_fragments = 0
         all_entities = []  # 累积所有实体，供Layer2使用（用于后续fragment的Layer2处理）
+        save_interval = 5  # 每处理N个fragment保存一次缓存
         
         def process_fragment_immediately(fragment):
             """立即处理fragment，处理完后立即批量生成embedding并写入Neo4j"""
-            nonlocal total_fragments, all_entities
+            nonlocal total_fragments, all_entities, save_interval
             
             total_fragments += 1
             fragment_start_time = time.time()
@@ -703,6 +703,15 @@ class MemoryBuilder:
                     import traceback
                     traceback.print_exc()
                     raise RuntimeError(f"Fragment {total_fragments} Neo4j写入失败: {e}")
+            
+            # 定期保存缓存（每处理N个fragment保存一次，避免数据丢失）
+            if total_fragments % save_interval == 0:
+                try:
+                    print(f"\n💾 定期保存缓存（每{save_interval}个fragment保存一次）...")
+                    cache.save()
+                    print(f"✅ 缓存已保存（Fragment {total_fragments}/{total_fragments}）")
+                except Exception as e:
+                    print(f"⚠️  定期保存缓存失败: {e}")
             
             return layer1_stats, layer2_stats, layer3_stats
         

@@ -329,26 +329,29 @@ class QASystem:
                         nodes_to_expand,
                         max_neighbors=20
                     )
-            
-            if not expanded_nodes:
-                print(f"  ⚠️  Expansion yielded no new nodes, stop")
-                break
-            
-            # Update node set
-            old_node_ids = {n['id'] for n in current_nodes}
-            new_nodes = [n for n in expanded_nodes if n['id'] not in old_node_ids]
-            
-            current_nodes.extend(new_nodes)
-            all_edges.extend(expanded_edges)
-            stats['expanded_nodes'] += len(new_nodes)
-            stats['hops'] = hop + 1
-            
-            print(f"  ✅ Expanded {len(new_nodes)} new nodes")
-            if new_nodes:
-                new_node_ids = [n['id'] for n in new_nodes]
-                print(f"     Expanded node IDs: {new_node_ids} (共 {len(new_node_ids)} 个)")
-                # 继续下一轮循环，重新尝试生成答案
-                continue
+                    
+                    if not expanded_nodes:
+                        print(f"  ⚠️  Expansion yielded no new nodes, stop")
+                        break
+                    
+                    # Update node set
+                    old_node_ids = {n['id'] for n in current_nodes}
+                    new_nodes = [n for n in expanded_nodes if n['id'] not in old_node_ids]
+                    
+                    current_nodes.extend(new_nodes)
+                    all_edges.extend(expanded_edges)
+                    stats['expanded_nodes'] += len(new_nodes)
+                    stats['hops'] = hop + 1
+                    
+                    print(f"  ✅ Expanded {len(new_nodes)} new nodes")
+                    if new_nodes:
+                        new_node_ids = [n['id'] for n in new_nodes]
+                        print(f"     Expanded node IDs: {new_node_ids} (共 {len(new_node_ids)} 个)")
+                        # 继续下一轮循环，重新尝试生成答案
+                        continue
+                    else:
+                        print(f"  ⚠️  No new nodes after expansion, stop")
+                        break
         
         # Stage 3: Final answer generation
         print(f"\n📍 Stage 3: Final answer generation")

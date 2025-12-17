@@ -42,16 +42,13 @@ class Layer1Recall:
         if neo4j_vector_search:
             # 检查是否支持向量索引
             self.use_neo4j_search = getattr(neo4j_vector_search, 'supports_vector_index', False)
-            if not self.use_neo4j_search:
-                print("  ⚠️  Neo4j社区版不支持原生向量索引，将使用cache（FAISS）进行召回")
         else:
             self.use_neo4j_search = False
         
         # 如果使用Neo4j向量搜索，尝试创建向量索引
         if self.use_neo4j_search:
             self._ensure_vector_index()
-        else:
-            print("  ℹ️  使用cache（FAISS）进行向量召回，Neo4j仅用于存储图结构")
+        # 社区版会自动使用cache（FAISS），无需输出提示
     
     def _ensure_vector_index(self):
         """确保向量索引存在"""

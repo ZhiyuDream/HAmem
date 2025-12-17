@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
 try:
@@ -20,36 +20,35 @@ class Config:
     llm_config: Optional['LlmConfig'] = None
     embedding_config: Optional['EmbeddingConfig'] = None
     
-    # 新的统一配置接口（推荐使用）
-    llm_api_key: str = os.getenv('LLM_API_KEY', 'sk-Xbjht8s691A45e85acf9T3BlBKFJ9D29b469Ae4e487AAED8')
-    llm_base_url: str = os.getenv('LLM_BASE_URL', 'https://c-z0-api-01.hash070.com/v1')
-    llm_model: str = os.getenv('LLM_MODEL', 'gpt-4.1-mini')
-    llm_provider: str = os.getenv('LLM_PROVIDER', 'openai')  # 默认提供商
+    # LLM配置（从环境变量读取）
+    llm_api_key: str = os.getenv('OPENAI_API_KEY', '')
+    llm_base_url: str = os.getenv('OPENAI_BASE_URL', '')
+    llm_model: str = os.getenv('LLM_MODEL', 'gpt-4o-mini')
+    llm_provider: str = os.getenv('LLM_PROVIDER', 'openai')
     
-    embedding_api_key: str = os.getenv('EMBEDDING_API_KEY', 'sk-Xbjht8s691A45e85acf9T3BlBKFJ9D29b469Ae4e487AAED8')
-    embedding_base_url: str = os.getenv('EMBEDDING_BASE_URL', 'https://c-z0-api-01.hash070.com/v1')
+    # Embedding配置（从环境变量读取）
+    embedding_api_key: str = os.getenv('OPENAI_API_KEY', '')
+    embedding_base_url: str = os.getenv('OPENAI_BASE_URL', '')
     embedding_model: str = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
-    embedding_provider: str = os.getenv('EMBEDDING_PROVIDER', 'openai')  # 默认提供商
+    embedding_provider: str = os.getenv('EMBEDDING_PROVIDER', 'openai')
     
-
-    
-    # 性能
+    # 性能配置
     max_retries: int = int(os.getenv('MAX_RETRIES', '3'))
     base_delay: float = float(os.getenv('BASE_DELAY', '1.0'))
     max_workers: int = int(os.getenv('MAX_WORKERS', '5'))
     embedding_batch_size: int = int(os.getenv('EMBEDDING_BATCH_SIZE', '100'))
     
-    # 缓存
+    # 缓存配置
     cache_dir: str = os.getenv('CACHE_DIR', 'cache')
     max_memory_cache_size: int = int(os.getenv('MAX_MEMORY_CACHE_SIZE', '1000'))
     
-    # 存储
+    # 存储配置
     storage_dir: str = os.getenv('STORAGE_DIR', 'storage')
     
-    # Neo4j 配置
+    # Neo4j配置
     neo4j_uri: str = os.getenv('NEO4J_URI', 'neo4j://localhost:7687')
     neo4j_username: str = os.getenv('NEO4J_USERNAME', 'neo4j')
-    neo4j_password: str = os.getenv('NEO4J_PASSWORD', 'Yuuki2Asuna')
+    neo4j_password: str = os.getenv('NEO4J_PASSWORD', '')
     neo4j_database: str = os.getenv('NEO4J_DATABASE', 'neo4j')
     use_neo4j: bool = os.getenv('USE_NEO4J', 'True').lower() == 'true'
     use_hybrid_search: bool = os.getenv('USE_HYBRID_SEARCH', 'true').lower() == 'true'
@@ -67,88 +66,94 @@ class Config:
     log_level: str = os.getenv('LOG_LEVEL', 'INFO')
     
     def __post_init__(self):
-        """初始化后处理：优先从新统一配置创建，如果未设置则从旧配置自动创建（向后兼容）"""
+        """从环境变量创建配置对象"""
         from InputConfig import LlmConfig, EmbeddingConfig, ProviderConfig
         
-        # 如果未提供llm_config，从环境变量创建
-        if self.llm_config is None:
-            # 优先使用新的统一配置接口
-            if self.llm_api_key:
-                # 根据 provider 设置默认 base_url
-                default_base_urls = {
-                    'openai': 'https://api.openai.com/v1',
-                    'deepseek': 'https://api.deepseek.com',
-                    'anthropic': 'https://api.anthropic.com',
-                    'groq': 'https://api.groq.com/openai/v1',
-                    'together': 'https://api.together.xyz/v1',
-                    'xai': 'https://api.x.ai/v1',
-                    'ollama': 'http://localhost:11434/v1',
-                }
-                base_url = self.llm_base_url or default_base_urls.get(self.llm_provider, '')
-                
-                self.llm_config = LlmConfig(
-                    provider=self.llm_provider,
-                    config=ProviderConfig(
-                        api_key=self.llm_api_key,
-                        base_url=base_url,
-                        model=self.llm_model
-                    )
+        # 创建LLM配置
+        if self.llm_config is None and self.llm_api_key:
+            default_base_urls = {
+                'openai': 'https://api.openai.com/v1',
+                'deepseek': 'https://api.deepseek.com',
+                'anthropic': 'https://api.anthropic.com',
+                'groq': 'https://api.groq.com/openai/v1',
+                'together': 'https://api.together.xyz/v1',
+                'xai': 'https://api.x.ai/v1',
+                'ollama': 'http://localhost:11434/v1',
+            }
+            base_url = self.llm_base_url or default_base_urls.get(self.llm_provider, '')
+            
+            self.llm_config = LlmConfig(
+                provider=self.llm_provider,
+                config=ProviderConfig(
+                    api_key=self.llm_api_key,
+                    base_url=base_url,
+                    model=self.llm_model
                 )
-            else:
-                # 最后尝试从环境变量自动创建
-                try:
-                    self.llm_config = LlmConfig.from_env()
-                except:
-                    pass
+            )
         
-        # 如果未提供embedding_config，从环境变量创建
-        if self.embedding_config is None:
-            # 优先使用新的统一配置接口
-            if self.embedding_api_key:
-                # 根据 provider 设置默认 base_url
-                default_base_urls = {
-                    'openai': 'https://api.openai.com/v1',
-                    'deepseek': 'https://api.deepseek.com',
-                    'azure_openai': 'https://api.openai.com/v1',
-                    'together': 'https://api.together.xyz/v1',
-                    'ollama': 'http://localhost:11434/v1',
-                }
-                base_url = self.embedding_base_url or default_base_urls.get(self.embedding_provider, '')
-                
-                self.embedding_config = EmbeddingConfig(
-                    provider=self.embedding_provider,
-                    config=ProviderConfig(
-                        api_key=self.embedding_api_key,
-                        base_url=base_url,
-                        model=self.embedding_model,
-                        additional_params={'dimensions': 1536} if self.embedding_provider == 'openai' else {}
-                    )
+        # 创建Embedding配置
+        if self.embedding_config is None and self.embedding_api_key:
+            default_base_urls = {
+                'openai': 'https://api.openai.com/v1',
+                'deepseek': 'https://api.deepseek.com',
+                'azure_openai': 'https://api.openai.com/v1',
+                'together': 'https://api.together.xyz/v1',
+                'ollama': 'http://localhost:11434/v1',
+            }
+            base_url = self.embedding_base_url or default_base_urls.get(self.embedding_provider, '')
+            
+            self.embedding_config = EmbeddingConfig(
+                provider=self.embedding_provider,
+                config=ProviderConfig(
+                    api_key=self.embedding_api_key,
+                    base_url=base_url,
+                    model=self.embedding_model,
+                    additional_params={'dimensions': 1536} if self.embedding_provider == 'openai' else {}
                 )
-            # 向后兼容：如果新配置未设置，尝试从旧配置创建
-            elif self.openai_api_key:
-                self.embedding_config = EmbeddingConfig(
-                    provider="openai",
-                    config=ProviderConfig(
-                        api_key=self.openai_api_key,
-                        base_url=self.openai_base_url or "https://api.openai.com/v1",
-                        model=self.embedding_model,
-                        additional_params={'dimensions': 1536}
-                    )
+            )
+    
+    def set_llm_model(self, model: str):
+        """
+        运行时设置LLM模型
+        
+        Args:
+            model: 模型名称，如 gpt-4o-mini, deepseek-chat 等
+        """
+        self.llm_model = model
+        if self.llm_config:
+            # 更新现有配置
+            self.llm_config.config.model = model
+        elif self.llm_api_key:
+            # 如果配置不存在但API key存在，创建新配置
+            from InputConfig import LlmConfig, ProviderConfig
+            default_base_urls = {
+                'openai': 'https://api.openai.com/v1',
+                'deepseek': 'https://api.deepseek.com',
+                'anthropic': 'https://api.anthropic.com',
+                'groq': 'https://api.groq.com/openai/v1',
+                'together': 'https://api.together.xyz/v1',
+                'xai': 'https://api.x.ai/v1',
+                'ollama': 'http://localhost:11434/v1',
+            }
+            base_url = self.llm_base_url or default_base_urls.get(self.llm_provider, '')
+            
+            self.llm_config = LlmConfig(
+                provider=self.llm_provider,
+                config=ProviderConfig(
+                    api_key=self.llm_api_key,
+                    base_url=base_url,
+                    model=model
                 )
-            else:
-                # 最后尝试从环境变量自动创建
-                try:
-                    self.embedding_config = EmbeddingConfig.from_env()
-                except:
-                    pass
+            )
     
     @classmethod
     def from_env(cls) -> 'Config':
+        """从环境变量创建配置"""
         return cls()
     
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> 'Config':
-        
+        """从字典创建配置"""
         return cls(**config_dict)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -183,17 +188,17 @@ class Config:
         """验证配置"""
         # 验证LLM配置
         if not self.llm_config:
-            raise ValueError("LLM配置未提供，请设置llm_config或提供API密钥")
+            raise ValueError("LLM配置未提供，请在.env文件中设置LLM_API_KEY")
         
         if not self.llm_config.get_api_key():
-            raise ValueError("LLM API密钥未配置")
+            raise ValueError("LLM API密钥未配置，请在.env文件中设置LLM_API_KEY")
         
         # 验证Embedding配置
         if not self.embedding_config:
-            raise ValueError("Embedding配置未提供，请设置embedding_config或提供API密钥")
+            raise ValueError("Embedding配置未提供，请在.env文件中设置EMBEDDING_API_KEY")
         
         if not self.embedding_config.config.api_key:
-            raise ValueError("Embedding API密钥未配置")
+            raise ValueError("Embedding API密钥未配置，请在.env文件中设置EMBEDDING_API_KEY")
         
         if self.use_neo4j and not self.neo4j_password:
             raise ValueError("Neo4j password is required when USE_NEO4J is true")

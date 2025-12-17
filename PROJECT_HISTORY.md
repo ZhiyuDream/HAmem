@@ -2,6 +2,105 @@
 
 ## Project History
 
+### 2024-12-XX: 添加LLM Judge评估功能
+
+**Requirement**: 在 experiment 运行时，对系统给出的答案和数据集期望的答案进行评估，使用 LLM Judge 的方式，使用 gpt-4o-mini 进行评估。
+
+**Implementation**:
+1. **添加评估Prompt**
+   - ✅ 在 `experiment/test_qa.py` 中添加了 `ACCURACY_PROMPT`，与 mem0 项目中的 prompt 保持一致
+   - ✅ Prompt 支持对答案进行 CORRECT/WRONG 评估，对时间相关问题有特殊处理
+
+2. **实现评估函数**
+   - ✅ 实现了 `evaluate_answer_with_llm_judge` 函数，使用 LLM 客户端调用 gpt-4o-mini 进行评估
+   - ✅ 实现了 `extract_json` 函数，用于从 LLM 响应中提取 JSON 格式的评估结果
+   - ✅ 支持多种 JSON 格式解析，包括纯 JSON 和包含 JSON 的文本
+   - ✅ 如果 JSON 解析失败，会尝试从文本中提取 "CORRECT" 或 "WRONG" 关键词
+
+3. **集成到QA测试流程**
+   - ✅ 在 QA 测试循环中，对每个有期望答案的问题进行 LLM Judge 评估
+   - ✅ 评估结果包含：label (CORRECT/WRONG)、score (1/0)、reasoning (评估理由)
+   - ✅ 在结果中保存评估信息，可以用于后续分析
+
+4. **统计和显示**
+   - ✅ 每个问题的评估结果会实时显示（label 和得分）
+   - ✅ 在总体统计中显示：评估问题数、正确答案数、准确率
+
+**Files Modified**:
+- `experiment/test_qa.py` - 添加了评估功能
+
+**Usage**:
+```bash
+# 运行QA测试，会自动进行LLM Judge评估
+python experiment/test_qa.py 1 --model gpt-4o-mini
+```
+
+**Output**:
+- 每个问题的评估结果（CORRECT/WRONG）
+- 总体评估统计（准确率）
+- 评估结果保存在 `all_results` 中
+
+**Result**: QA测试现在可以自动评估答案质量，提供准确的准确率统计
+
+---
+
+### 2024-12-XX: 重构实验脚本到experiment目录
+
+**Requirement**: 将locomo数据集测试脚本整合到experiment目录，统一命名风格，并改进命令行参数支持
+
+**Implementation**:
+1. **重命名和移动脚本**
+   - ✅ 将 `calculate_token_and_time_real.py` 重命名为 `experiment/test_memory_building.py`
+   - ✅ 将 `calculate_qa_token_and_time.py` 重命名为 `experiment/test_qa.py`
+   - ✅ 统一使用 `test_` 前缀的命名风格
+
+2. **改进命令行参数**
+   - ✅ 使用 `argparse` 模块替代手动解析 `sys.argv`
+   - ✅ 添加 `--dataset` / `-d` 参数支持指定数据集路径
+   - ✅ 统一参数命名风格（使用 `--llm-provider` 替代位置参数）
+   - ✅ 添加详细的帮助信息和示例
+
+3. **路径处理优化**
+   - ✅ 修正项目根目录路径计算（适应experiment子目录）
+   - ✅ 添加数据集文件存在性检查
+   - ✅ 提供清晰的错误提示
+
+**Files Created**:
+- `experiment/test_memory_building.py` - 记忆构建测试脚本
+- `experiment/test_qa.py` - QA系统测试脚本
+
+**Files Deleted**:
+- `calculate_token_and_time_real.py` - 已迁移到experiment目录
+- `calculate_qa_token_and_time.py` - 已迁移到experiment目录
+
+**Usage**:
+```bash
+# 记忆构建测试
+python experiment/test_memory_building.py 0 --llm-provider openai
+python experiment/test_memory_building.py 0 --dataset /path/to/dataset.json --llm-provider deepseek
+
+# QA测试
+python experiment/test_qa.py 1 --llm-provider openai
+python experiment/test_qa.py 1 --question-idx 0 --dataset /path/to/dataset.json
+```
+
+**Result**: 实验脚本更加规范和易用，支持灵活的数据集路径配置
+
+### 2024-12-XX: 统一QA和记忆构建的Namespace逻辑
+
+**Requirement**: 确保QA测试和记忆构建使用相同的namespace，使得QA能够正确找到已构建的记忆数据
+
+**Implementation**:
+1. **统一namespace生成逻辑**
+   - ✅ 修改 `calculate_qa_token_and_time.py` 的默认namespace从 `locomo{idx}_test` 改为 `locomo_conv_{idx}`
+   - ✅ 与 `calculate_token_and_time_real.py` 的namespace格式保持一致
+   - ✅ 更新命令行参数示例以反映新的namespace格式
+
+**Files Modified**:
+- `calculate_qa_token_and_time.py` - 统一namespace格式为 `locomo_conv_{conversation_idx}`
+
+**Result**: QA测试现在可以正确找到使用相同conversation索引构建的记忆数据
+
 ### 2024-12-XX: Token数量计算工具（真实调用版本）
 
 **Requirement**: 在实际调用LLM时统计locomo数据集中一个conversation的token数量，确保统计准确性

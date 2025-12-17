@@ -67,7 +67,7 @@ class Layer2Extractor:
                 response = self.llm_client.call_llm(
                     prompt,
                     provider=provider
-            )
+                )
             
             # 解析响应
             result = self._parse_llm_response(response)

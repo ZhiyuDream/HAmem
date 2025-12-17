@@ -328,7 +328,7 @@ Locomo 数据集的格式。
 ### 方式 1：从文件读取（推荐）
 
 ```python
-from main import HAmem
+from core.main import HAmem
 
 hamem = HAmem()
 
@@ -346,7 +346,7 @@ result = hamem.build_memory_from_file("conversation.json")
 ### 方式 2：直接传入数据
 
 ```python
-from main import HAmem
+from core.main import HAmem
 
 hamem = HAmem()
 
