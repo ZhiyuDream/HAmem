@@ -206,13 +206,19 @@ class LlmConfig:
         Args:
             provider: 提供商名称，如果为None则从环境变量LLM_PROVIDER读取
         
-        环境变量命名规则：
-        - {PREFIX}_API_KEY: API密钥
-        - {PREFIX}_BASE_URL: API地址（可选）
-        - {PREFIX}_MODEL: 模型名称（可选）
-        - {PREFIX}_TEMPERATURE: 温度（可选）
-        - {PREFIX}_MAX_TOKENS: 最大token数（可选）
-        - LLM_PROVIDER: 默认提供商
+        环境变量命名规则（优先级从高到低）：
+        1. 统一配置接口（推荐）：
+           - LLM_API_KEY: API密钥
+           - LLM_BASE_URL: API地址（可选）
+           - LLM_MODEL: 模型名称（可选）
+           - LLM_PROVIDER: 提供商名称（可选，默认deepseek）
+        
+        2. 提供商特定配置（向后兼容）：
+           - {PREFIX}_API_KEY: API密钥
+           - {PREFIX}_BASE_URL: API地址（可选）
+           - {PREFIX}_MODEL: 模型名称（可选）
+           - {PREFIX}_TEMPERATURE: 温度（可选）
+           - {PREFIX}_MAX_TOKENS: 最大token数（可选）
         """
         # 如果没有指定provider，尝试从环境变量读取
         if provider is None:
@@ -228,11 +234,17 @@ class LlmConfig:
         # 从环境变量读取配置
         config_data = {}
         
+        # 优先使用统一配置接口（LLM_API_KEY, LLM_BASE_URL等）
+        # 如果统一配置存在，优先使用；否则使用提供商特定配置
+        unified_api_key = os.getenv("LLM_API_KEY")
+        unified_base_url = os.getenv("LLM_BASE_URL")
+        unified_model = os.getenv("LLM_MODEL")
+        
         # 通用字段映射（ProviderConfig直接支持的字段）
         env_mappings = {
-            'api_key': f"{env_prefix}_API_KEY",
-            'base_url': f"{env_prefix}_BASE_URL",
-            'model': f"{env_prefix}_MODEL",
+            'api_key': f"LLM_API_KEY" if unified_api_key else f"{env_prefix}_API_KEY",
+            'base_url': f"LLM_BASE_URL" if unified_base_url else f"{env_prefix}_BASE_URL",
+            'model': f"LLM_MODEL" if unified_model else f"{env_prefix}_MODEL",
             'temperature': f"{env_prefix}_TEMPERATURE",
             'max_tokens': f"{env_prefix}_MAX_TOKENS",
             'timeout': f"{env_prefix}_TIMEOUT",
@@ -535,6 +547,19 @@ class EmbeddingConfig:
         
         Args:
             provider: 提供商名称，如果为None则从环境变量EMBEDDING_PROVIDER读取
+        
+        环境变量命名规则（优先级从高到低）：
+        1. 统一配置接口（推荐）：
+           - EMBEDDING_API_KEY: API密钥
+           - EMBEDDING_BASE_URL: API地址（可选）
+           - EMBEDDING_MODEL: 模型名称（可选）
+           - EMBEDDING_PROVIDER: 提供商名称（可选，默认openai）
+        
+        2. 提供商特定配置（向后兼容）：
+           - {PREFIX}_API_KEY: API密钥
+           - {PREFIX}_BASE_URL: API地址（可选）
+           - {PREFIX}_MODEL: 模型名称（可选）
+           - {PREFIX}_DIMENSIONS: 向量维度（可选）
         """
         # 如果没有指定provider，尝试从环境变量读取
         if provider is None:
@@ -550,11 +575,17 @@ class EmbeddingConfig:
         # 从环境变量读取配置
         config_data = {}
         
+        # 优先使用统一配置接口（EMBEDDING_API_KEY, EMBEDDING_BASE_URL等）
+        # 如果统一配置存在，优先使用；否则使用提供商特定配置
+        unified_api_key = os.getenv("EMBEDDING_API_KEY")
+        unified_base_url = os.getenv("EMBEDDING_BASE_URL")
+        unified_model = os.getenv("EMBEDDING_MODEL")
+        
         # 环境变量映射
         env_mappings = {
-            'api_key': f"{env_prefix}_API_KEY",
-            'base_url': f"{env_prefix}_BASE_URL",
-            'model': f"{env_prefix}_MODEL",
+            'api_key': f"EMBEDDING_API_KEY" if unified_api_key else f"{env_prefix}_API_KEY",
+            'base_url': f"EMBEDDING_BASE_URL" if unified_base_url else f"{env_prefix}_BASE_URL",
+            'model': f"EMBEDDING_MODEL" if unified_model else f"{env_prefix}_MODEL",
             'timeout': f"{env_prefix}_TIMEOUT",
             'max_retries': f"{env_prefix}_MAX_RETRIES",
             'dimensions': f"{env_prefix}_DIMENSIONS",

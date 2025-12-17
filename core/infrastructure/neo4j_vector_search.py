@@ -64,8 +64,7 @@ class Neo4jVectorSearch:
         # 检查是否为社区版（社区版不支持原生向量索引）
         self.supports_vector_index = not getattr(neo4j_client, 'is_community_edition', False)
         if not self.supports_vector_index:
-            logger.warning("⚠️  Neo4j社区版不支持原生向量索引，向量搜索功能将被禁用")
-            logger.info("💡 建议：使用cache（FAISS）进行向量搜索，Neo4j仅用于存储图结构")
+            logger.debug("Neo4j社区版不支持原生向量索引，向量搜索功能将被禁用，使用cache（FAISS）进行向量搜索")
         
         # 初始化 EmbeddingManager（如果未提供）
         if embedding_manager is None and config is not None:
@@ -261,9 +260,9 @@ class Neo4jVectorSearch:
         Returns:
             bool: 是否创建成功
         """
-        # 检查是否支持向量索引
+        # 检查是否支持向量索引（社区版直接返回，不输出警告）
         if not self.supports_vector_index:
-            logger.warning(f"⚠️  Neo4j社区版不支持原生向量索引，无法创建 {index_name}")
+            logger.debug(f"Neo4j社区版不支持原生向量索引，跳过创建 {index_name}")
             return False
         
         try:

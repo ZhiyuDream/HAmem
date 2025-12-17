@@ -57,10 +57,15 @@ HAmem/
 ├── ⚙️ config.py               # Configuration
 ├── 🚀 main.py                 # Entry point
 ├── 📋 requirements.txt        # Dependencies
-└── 🛠️ tools/                  # Utility scripts
-    ├── calculate_token_count.py # Token calculation (estimation)
-    ├── calculate_token_and_time_real.py # Token calculation (real API calls)
-    └── clear_neo4j.py         # Neo4j cleanup utility
+├── 📚 InputConfig.py          # Flexible LLM/Embedding configuration
+├── 📖 INPUT_FORMAT.md         # Input format specification
+├── 📖 CONFIG_GUIDE.md         # Configuration guide
+├── 🧪 experiment/             # Experiment scripts
+│   ├── test_memory_building.py # Memory building test with token/time stats
+│   └── test_qa.py             # QA system test with token/time stats
+└── 📝 examples/               # Usage examples
+    ├── chatbot_example.py     # Chatbot example using search_memory
+    └── README.md              # Examples documentation
 ```
 
 ### Hybrid Search Architecture
@@ -83,7 +88,75 @@ Query Flow:
 pip install -r requirements.txt
 ```
 
-### 2. Setup Neo4j Database
+### 2. Create .env Configuration File
+
+Create a `.env` file in the project root directory with the following environment variables:
+
+```bash
+# Create .env file in project root
+cat > .env << EOF
+# ============================================
+# Required Configuration
+# ============================================
+
+# OpenAI API Configuration (for LLM and Embedding)
+OPENAI_API_KEY=your-api-key-here
+OPENAI_BASE_URL=https://api.openai.com/v1
+# If you need different embedding configuration, you can set it in config.py lines 30-31
+
+# Neo4j Database Configuration (if using Neo4j)
+NEO4J_URI=neo4j://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your-neo4j-password
+
+# ============================================
+# Optional Configuration (with defaults)
+# ============================================
+
+# LLM Model Configuration
+LLM_MODEL=gpt-4o-mini
+LLM_PROVIDER=openai
+
+# Embedding Model Configuration
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_PROVIDER=openai
+
+# Neo4j Feature Flags
+USE_NEO4J=True
+USE_HYBRID_SEARCH=true
+NEO4J_DATABASE=neo4j
+
+# Performance Configuration
+MAX_RETRIES=3
+BASE_DELAY=1.0
+MAX_WORKERS=5
+EMBEDDING_BATCH_SIZE=100
+
+# Cache Configuration
+CACHE_DIR=cache
+MAX_MEMORY_CACHE_SIZE=1000
+
+# Processing Configuration
+FRAGMENT_MAX_LENGTH=6000
+FRAGMENT_OVERLAP=200
+
+# Search Configuration
+SEARCH_TOP_K=10
+SIMILARITY_THRESHOLD=0.7
+
+# Other Configuration
+DEBUG=false
+LOG_LEVEL=INFO
+EOF
+```
+
+**Important Notes:**
+- `OPENAI_API_KEY` and `OPENAI_BASE_URL` are **required** for LLM and Embedding services
+- If using Neo4j, `NEO4J_PASSWORD` is also **required**
+- Other configuration items have reasonable defaults and can be modified as needed
+- If using a custom API service, modify `OPENAI_BASE_URL` to the corresponding API address
+
+### 3. Setup Neo4j Database
 
 HAmem uses Neo4j as the primary storage backend. Make sure Neo4j is running:
 
@@ -99,46 +172,122 @@ docker run -d \
 # Visit: https://neo4j.com/download/
 ```
 
-### 3. Configure API Keys and Neo4j
+**Note**: If you don't want to use Neo4j, you can set `USE_NEO4J=False` in the `.env` file, and the system will use FAISS for vector search only.
 
-#### Method 1: Using .env file (Recommended)
+### 4. Quick Start - Run Locomo Dataset Experiment
+
+We provide a convenient parallel experiment script that can run memory building and QA testing for all conversations (0-9) at once:
+
 ```bash
-# Create .env file in HAmem directory
-cat > .env << EOF
-# API Keys
-OPENAI_API_KEY=your-openai-api-key
-DEEPSEEK_API_KEY=your-deepseek-api-key
+# Navigate to the experiment directory
+cd experiment
 
-# Neo4j Configuration
-NEO4J_URI=neo4j://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=your-neo4j-password
-NEO4J_DATABASE=neo4j
-USE_NEO4J=true
-USE_HYBRID_SEARCH=true
-EOF
+# Run memory building and QA testing for all conversations (0-9) (silent mode, suitable for background)
+python run_locomo_experiment.py --dataset ../locomo/data/locomo10.json
+
+# Run in background (recommended)
+nohup python run_locomo_experiment.py --dataset ../locomo/data/locomo10.json > /dev/null 2>&1 &
+
+# Specify model and parallelism
+python run_locomo_experiment.py --dataset ../locomo/data/locomo10.json --model gpt-4o-mini --max-workers 5
+
+# Only run memory building, skip QA testing
+python run_locomo_experiment.py --dataset ../locomo/data/locomo10.json --skip-qa
+
+# Run conversations in specified range
+python run_locomo_experiment.py --dataset ../locomo/data/locomo10.json --start 0 --end 4
 ```
 
-#### Method 2: Environment Variables
+**Script Features:**
+- ✅ **Silent Mode**: All output is saved to log files, not printed to terminal, suitable for background execution
+- ✅ **Parallel Processing**: Supports multi-threaded parallel execution for improved efficiency
+- ✅ **Isolated Namespaces**: Each conversation uses an independent namespace (`locomo_conv_0`, `locomo_conv_1`, etc.), ensuring no interference
+- ✅ **Detailed Logs**: Each conversation's log is saved in `experiment/logs/conv_{idx}.log`
+- ✅ **Main Log**: Overall progress and summary information is saved in `experiment/logs/main.log`
+- ✅ **Summary Report**: After the experiment, generates `experiment/logs/summary.json` with all results
+- ✅ **Token Statistics**: Automatically tracks token usage for all conversations
+
+**Output Description:**
+- **Main Log**: `experiment/logs/main.log` - Overall progress and summary information
+- **Detailed Logs**: `experiment/logs/conv_{conversation_idx}.log` - Detailed logs for each conversation
+- **Summary File**: `experiment/logs/summary.json` - Contains result statistics for all conversations
+
+**View Progress:**
 ```bash
-export OPENAI_API_KEY="your-openai-api-key"
-export DEEPSEEK_API_KEY="your-deepseek-api-key"
-export NEO4J_URI="neo4j://localhost:7687"
-export NEO4J_USERNAME="neo4j"
-export NEO4J_PASSWORD="your-neo4j-password"
-export USE_NEO4J="true"
-export USE_HYBRID_SEARCH="true"
+# View main log (overall progress)
+tail -f experiment/logs/main.log
+
+# View detailed log for a specific conversation
+tail -f experiment/logs/conv_0.log
+
+# View summary results
+cat experiment/logs/summary.json
 ```
 
-### 4. Basic Usage
+### 5. Basic Usage
+
+#### Input Format
+
+HAmem supports multiple input formats, and the system will automatically identify and convert them. **We recommend using the HAmem standard format**.
+
+**HAmem Standard Format (Recommended)**:
+```python
+conversation_data = {
+    "messages": [
+        {
+            "speaker": "user",
+            "content": "User message content",
+            "timestamp": "2024-01-01T10:00:00"
+        },
+        {
+            "speaker": "assistant",
+            "content": "Assistant reply content",
+            "timestamp": "2024-01-01T10:00:05"
+        }
+    ]
+}
+```
+
+**Supported Formats**:
+- ✅ HAmem Standard Format (Recommended)
+- ✅ Messages Format (similar to OpenAI Chat API)
+- ✅ Locomo Format
+- ✅ Sessions Format
+- ✅ Batch Format
+
+For detailed format specifications, please refer to [INPUT_FORMAT.md](INPUT_FORMAT.md).
+
+#### Usage Examples
+
+**Basic Usage**:
 
 ```python
-from main import HAmem
+from core.main import HAmem
 
 # Initialize
 hamem = HAmem()
 
-# Build memory with namespace (multi-tenant support)
+# Method 1: Read from file (automatic format detection)
+result = hamem.build_memory_from_file("conversation.json", namespace="my_project")
+
+# Method 2: Pass data directly (HAmem Standard Format)
+conversation_data = {
+    "messages": [
+        {
+            "speaker": "user",
+            "content": "User message",
+            "timestamp": "2024-01-01T10:00:00"
+        },
+        {
+            "speaker": "assistant",
+            "content": "Assistant reply",
+            "timestamp": "2024-01-01T10:00:05"
+        }
+    ]
+}
+result = hamem.build_memory(conversation_data, namespace="my_project")
+
+# Method 3: Use other formats (system will automatically convert)
 conversation_data = {
     "sessions": [
         {
@@ -158,6 +307,7 @@ conversation_data = {
         }
     ]
 }
+result = hamem.build_memory(conversation_data, namespace="my_project")
 
 # Build memory (namespace for data isolation)
 namespace = "project_1"
@@ -168,6 +318,36 @@ results = hamem.search_memory("What is the user working on?", namespace=namespac
 
 # Q&A
 answer = hamem.ask_question("What did we discuss?", namespace=namespace)
+```
+
+**Chatbot Example** (using search_memory to retrieve historical information and generate conversational responses):
+
+```python
+from core.main import HAmem
+from examples.chatbot_example import ChatBot
+
+# Initialize HAmem
+hamem = HAmem()
+
+# Optional: Build some memory first
+hamem.build_memory_from_file("conversation.json")
+
+# Create chatbot
+chatbot = ChatBot(
+    hamem=hamem,
+    namespace="default",
+    save_conversation=True  # Save new conversations to memory
+)
+
+# Start interactive chat
+chatbot.interactive_chat()
+
+# Or single conversation
+response = chatbot.chat("Hello, what did we talk about before?")
+print(response)
+```
+
+For detailed instructions, please refer to [examples/README.md](examples/README.md).
 ```
 
 ## 📊 Core Features
@@ -250,16 +430,32 @@ async def process_fragments_async(fragments):
 ## 🔧 Configuration Options
 
 ### Environment Variables
+
+#### Unified Configuration Interface (Recommended)
 ```bash
-# API Configuration
+# LLM Configuration (Unified Interface)
+LLM_API_KEY=your-api-key
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
+LLM_PROVIDER=deepseek
+
+# Embedding Configuration (Unified Interface)
+EMBEDDING_API_KEY=your-api-key
+EMBEDDING_BASE_URL=https://api.openai.com/v1
+EMBEDDING_MODEL=text-embedding-3-small
+EMBEDDING_PROVIDER=openai
+```
+
+#### Backward Compatible Configuration (Still Supported)
+```bash
+# Old configuration method (still supported, but unified interface is recommended)
 OPENAI_API_KEY=your-api-key
 OPENAI_BASE_URL=https://api.openai.com/v1
 DEEPSEEK_API_KEY=your-deepseek-api-key
 DEEPSEEK_BASE_URL=https://api.deepseek.com
-
-# Model Configuration
 LLM_MODEL=deepseek-chat
 EMBEDDING_MODEL=text-embedding-3-small
+```
 
 # Neo4j Configuration
 NEO4J_URI=neo4j://localhost:7687
@@ -290,26 +486,26 @@ SIMILARITY_THRESHOLD=0.7
 
 ### Code Configuration
 
-#### 方式1：使用新的灵活配置（推荐）
+#### Method 1: Use New Flexible Configuration (Recommended)
 ```python
 from config import Config
 from InputConfig import LlmConfig, EmbeddingConfig
 
-# 创建LLM配置
+# Create LLM configuration
 llm_config = LlmConfig.create_deepseek(
     api_key="your-deepseek-key",
     model="deepseek-chat",
     temperature=0.7
 )
 
-# 创建Embedding配置
+# Create Embedding configuration
 embedding_config = EmbeddingConfig.create_openai(
     api_key="your-openai-key",
     model="text-embedding-3-small",
     dimensions=1536
 )
 
-# 创建完整配置
+# Create complete configuration
 config = Config(
     llm_config=llm_config,
     embedding_config=embedding_config,
@@ -320,21 +516,25 @@ config = Config(
 hamem = HAmem(config)
 ```
 
-#### 方式2：使用环境变量（向后兼容）
+#### Method 2: Use Environment Variables (Recommended, Simplest)
 ```python
 from config import Config
 
-# 自动从环境变量加载（支持旧配置方式）
+# Automatically load from environment variables (prioritizes unified interface, also supports old configuration)
 config = Config()
 hamem = HAmem(config)
 ```
 
-#### 方式3：混合配置
+**Environment Variable Priority**:
+1. Unified configuration interface (`LLM_API_KEY`, `EMBEDDING_API_KEY`) - Recommended
+2. Old configuration method (`OPENAI_API_KEY`, `DEEPSEEK_API_KEY`) - Backward compatible
+
+#### Method 3: Mixed Configuration
 ```python
 from config import Config
 from InputConfig import LlmConfig
 
-# 只自定义LLM配置，Embedding使用环境变量
+# Only customize LLM configuration, Embedding uses environment variables
 llm_config = LlmConfig.create_openai(
     api_key="your-key",
     model="gpt-4o-mini"
@@ -342,43 +542,47 @@ llm_config = LlmConfig.create_openai(
 
 config = Config(
     llm_config=llm_config,
-    # embedding_config 会自动从环境变量创建
+    # embedding_config will be automatically created from environment variables
 )
 
 hamem = HAmem(config)
 ```
 
-#### 支持的LLM提供商
+#### Supported LLM Providers
 - OpenAI: `LlmConfig.create_openai(...)`
 - DeepSeek: `LlmConfig.create_deepseek(...)`
 - Anthropic: `LlmConfig.create_anthropic(...)`
 - Ollama: `LlmConfig.create_ollama(...)`
 - Groq: `LlmConfig.create_groq(...)`
-- 更多提供商请参考 `InputConfig.py`
+- For more providers, please refer to `InputConfig.py`
 
-#### 支持的Embedding提供商
+#### Supported Embedding Providers
 - OpenAI: `EmbeddingConfig.create_openai(...)`
 - DeepSeek: `EmbeddingConfig.create_deepseek(...)`
-- 更多提供商请参考 `InputConfig.py`
+- For more providers, please refer to `InputConfig.py`
 
 ## 🛠️ Utility Tools
 
-### Token Calculation
+### Locomo Experiment (Recommended)
 ```bash
-# Estimate token usage (fast, no API calls)
-python calculate_token_count.py <conversation_idx> [dataset_path]
+# One-click run locomo experiment (recommended)
+python experiment/run_locomo.py <conversation_idx> [--provider {openai,deepseek}] [--dataset DATASET] [--skip-storage]
 
-# Real token calculation (accurate, uses API)
-python calculate_token_and_time_real.py <conversation_idx> [llm_provider] [dataset_path]
+# Examples
+python experiment/run_locomo.py 0
+python experiment/run_locomo.py 0 --provider deepseek
+python experiment/run_locomo.py 0 --dataset /path/to/locomo10.json
 ```
+
+For detailed usage instructions, please refer to [experiment/README.md](experiment/README.md)
 
 ### Neo4j Management
 ```bash
-# Clear all data in Neo4j
-python clear_neo4j.py
+# Clear all data in Neo4j and cache
+python clear.py
 
 # Clear specific namespace
-python clear_neo4j.py <namespace>
+python clear.py <namespace>
 ```
 
 ## 🧪 Testing

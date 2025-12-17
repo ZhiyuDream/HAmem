@@ -86,6 +86,19 @@ class QASystem:
         
         # Stage 1: Initial recall
         print(f"\n📍 Stage 1: Initial recall")
+        
+        # 检查 cache 是否为空
+        if self.cache.faiss_index is None or self.cache.faiss_index.ntotal == 0:
+            print(f"⚠️  警告: FAISS索引为空 (namespace: {self.namespace})")
+            print(f"   💡 提示: 请确保已使用正确的 namespace 调用 build_memory()")
+            print(f"   💡 如果数据在其他 namespace，请在调用 ask_question() 时指定正确的 namespace 参数")
+            return {
+                'question': question,
+                'answer': '抱歉，无法找到相关记忆。请检查是否使用了正确的 namespace，或先调用 build_memory() 构建记忆。',
+                'reason': f'FAISS索引为空 (namespace: {self.namespace})',
+                'stats': stats
+            }
+        
         if self.use_hybrid_search and hasattr(self.recall, 'multi_layer_recall_with_expansion'):
             # 使用混合检索（FAISS + Neo4j 图扩展）
             print(f"  🔍 使用混合检索模式（FAISS + Neo4j）")
@@ -165,20 +178,20 @@ class QASystem:
             
             # 2.2: Try to answer directly (LLM will automatically select appropriate modules)
             print(f"  🚀 Attempting to generate answer directly...")
-                
-                # Get fragments
-                all_fragments = self.recall.get_fragments_by_nodes(
-                    [n['id'] for n in current_nodes]
-                )
-                
-                # Build context
-                context = {
-                    'layer1': [n for n in current_nodes if n.get('layer') == 1],
-                    'layer2': [n for n in current_nodes if n.get('layer') == 2],
-                    'layer3': [n for n in current_nodes if n.get('layer') == 3],
-                    'edges': all_edges + connecting_edges,
-                    'fragments': all_fragments
-                }
+            
+            # Get fragments
+            all_fragments = self.recall.get_fragments_by_nodes(
+                [n['id'] for n in current_nodes]
+            )
+            
+            # Build context
+            context = {
+                'layer1': [n for n in current_nodes if n.get('layer') == 1],
+                'layer2': [n for n in current_nodes if n.get('layer') == 2],
+                'layer3': [n for n in current_nodes if n.get('layer') == 3],
+                'edges': all_edges + connecting_edges,
+                'fragments': all_fragments
+            }
                 
             # Try to answer directly (LLM will automatically select appropriate modules)
             # Pass all modules so LLM can choose which ones to apply
@@ -189,8 +202,8 @@ class QASystem:
                 context, 
                 selected_modules=all_modules  # 让LLM自动选择和应用
             )
-                stats['llm_calls'] += 1
-                
+            stats['llm_calls'] += 1
+            
             answer = answer_result.get('answer', '')
             reason = answer_result.get('reason', '')
             
@@ -312,30 +325,33 @@ class QASystem:
                         break
                 else:
                     # 降级到原有的expansion方法
-            expanded_nodes, expanded_edges = self.expansion.expand_nodes(
-                nodes_to_expand,
-                max_neighbors=20
-            )
-            
-            if not expanded_nodes:
-                print(f"  ⚠️  Expansion yielded no new nodes, stop")
-                break
-            
-            # Update node set
-            old_node_ids = {n['id'] for n in current_nodes}
-            new_nodes = [n for n in expanded_nodes if n['id'] not in old_node_ids]
-            
-            current_nodes.extend(new_nodes)
-            all_edges.extend(expanded_edges)
-            stats['expanded_nodes'] += len(new_nodes)
-            stats['hops'] = hop + 1
-            
-            print(f"  ✅ Expanded {len(new_nodes)} new nodes")
-            if new_nodes:
+                    expanded_nodes, expanded_edges = self.expansion.expand_nodes(
+                        nodes_to_expand,
+                        max_neighbors=20
+                    )
+                    
+                    if not expanded_nodes:
+                        print(f"  ⚠️  Expansion yielded no new nodes, stop")
+                        break
+                    
+                    # Update node set
+                    old_node_ids = {n['id'] for n in current_nodes}
+                    new_nodes = [n for n in expanded_nodes if n['id'] not in old_node_ids]
+                    
+                    current_nodes.extend(new_nodes)
+                    all_edges.extend(expanded_edges)
+                    stats['expanded_nodes'] += len(new_nodes)
+                    stats['hops'] = hop + 1
+                    
+                    print(f"  ✅ Expanded {len(new_nodes)} new nodes")
+                    if new_nodes:
                         new_node_ids = [n['id'] for n in new_nodes]
                         print(f"     Expanded node IDs: {new_node_ids} (共 {len(new_node_ids)} 个)")
-                    # 继续下一轮循环，重新尝试生成答案
-                    continue
+                        # 继续下一轮循环，重新尝试生成答案
+                        continue
+                    else:
+                        print(f"  ⚠️  No new nodes after expansion, stop")
+                        break
         
         # Stage 3: Final answer generation
         print(f"\n📍 Stage 3: Final answer generation")
