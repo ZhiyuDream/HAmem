@@ -189,7 +189,7 @@ python run_locomo_experiment.py --dataset ../locomo/data/locomo10.json
 nohup python run_locomo_experiment.py --dataset ../locomo/data/locomo10.json > /dev/null 2>&1 &
 
 # Specify model and parallelism
-python run_locomo_experiment.py --dataset ../locomo/data/locomo10.json --model gpt-4o-mini --max-workers 5
+python run_locomo_experiment.py --dataset ../locomo/data/locomo10.json --model gpt-4.1-mini --max-workers 5
 
 # Only run memory building, skip QA testing
 python run_locomo_experiment.py --dataset ../locomo/data/locomo10.json --skip-qa
