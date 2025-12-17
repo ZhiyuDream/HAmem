@@ -86,6 +86,19 @@ class QASystem:
         
         # Stage 1: Initial recall
         print(f"\n📍 Stage 1: Initial recall")
+        
+        # 检查 cache 是否为空
+        if self.cache.faiss_index is None or self.cache.faiss_index.ntotal == 0:
+            print(f"⚠️  警告: FAISS索引为空 (namespace: {self.namespace})")
+            print(f"   💡 提示: 请确保已使用正确的 namespace 调用 build_memory()")
+            print(f"   💡 如果数据在其他 namespace，请在调用 ask_question() 时指定正确的 namespace 参数")
+            return {
+                'question': question,
+                'answer': '抱歉，无法找到相关记忆。请检查是否使用了正确的 namespace，或先调用 build_memory() 构建记忆。',
+                'reason': f'FAISS索引为空 (namespace: {self.namespace})',
+                'stats': stats
+            }
+        
         if self.use_hybrid_search and hasattr(self.recall, 'multi_layer_recall_with_expansion'):
             # 使用混合检索（FAISS + Neo4j 图扩展）
             print(f"  🔍 使用混合检索模式（FAISS + Neo4j）")

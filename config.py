@@ -21,21 +21,17 @@ class Config:
     embedding_config: Optional['EmbeddingConfig'] = None
     
     # 新的统一配置接口（推荐使用）
-    llm_api_key: str = os.getenv('LLM_API_KEY', '')
-    llm_base_url: str = os.getenv('LLM_BASE_URL', '')
-    llm_model: str = os.getenv('LLM_MODEL', 'deepseek-chat')
-    llm_provider: str = os.getenv('LLM_PROVIDER', 'deepseek')  # 默认提供商
+    llm_api_key: str = os.getenv('LLM_API_KEY', 'sk-Xbjht8s691A45e85acf9T3BlBKFJ9D29b469Ae4e487AAED8')
+    llm_base_url: str = os.getenv('LLM_BASE_URL', 'https://c-z0-api-01.hash070.com/v1')
+    llm_model: str = os.getenv('LLM_MODEL', 'gpt-4.1-mini')
+    llm_provider: str = os.getenv('LLM_PROVIDER', 'openai')  # 默认提供商
     
-    embedding_api_key: str = os.getenv('EMBEDDING_API_KEY', '')
-    embedding_base_url: str = os.getenv('EMBEDDING_BASE_URL', '')
+    embedding_api_key: str = os.getenv('EMBEDDING_API_KEY', 'sk-Xbjht8s691A45e85acf9T3BlBKFJ9D29b469Ae4e487AAED8')
+    embedding_base_url: str = os.getenv('EMBEDDING_BASE_URL', 'https://c-z0-api-01.hash070.com/v1')
     embedding_model: str = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
     embedding_provider: str = os.getenv('EMBEDDING_PROVIDER', 'openai')  # 默认提供商
     
-    # 向后兼容：保留旧的配置字段（如果新配置未设置，将从这些字段读取）
-    openai_api_key: str = os.getenv('OPENAI_API_KEY', '')
-    openai_base_url: str = os.getenv('OPENAI_BASE_URL', '')
-    deepseek_api_key: str = os.getenv('DEEPSEEK_API_KEY', '')
-    deepseek_base_url: str = os.getenv('DEEPSEEK_BASE_URL', '')
+
     
     # 性能
     max_retries: int = int(os.getenv('MAX_RETRIES', '3'))
@@ -53,7 +49,7 @@ class Config:
     # Neo4j 配置
     neo4j_uri: str = os.getenv('NEO4J_URI', 'neo4j://localhost:7687')
     neo4j_username: str = os.getenv('NEO4J_USERNAME', 'neo4j')
-    neo4j_password: str = os.getenv('NEO4J_PASSWORD', '')
+    neo4j_password: str = os.getenv('NEO4J_PASSWORD', 'Yuuki2Asuna')
     neo4j_database: str = os.getenv('NEO4J_DATABASE', 'neo4j')
     use_neo4j: bool = os.getenv('USE_NEO4J', 'True').lower() == 'true'
     use_hybrid_search: bool = os.getenv('USE_HYBRID_SEARCH', 'true').lower() == 'true'
@@ -96,25 +92,6 @@ class Config:
                         api_key=self.llm_api_key,
                         base_url=base_url,
                         model=self.llm_model
-                    )
-                )
-            # 向后兼容：如果新配置未设置，尝试从旧配置创建
-            elif self.deepseek_api_key:
-                self.llm_config = LlmConfig(
-                    provider="deepseek",
-                    config=ProviderConfig(
-                        api_key=self.deepseek_api_key,
-                        base_url=self.deepseek_base_url or "https://api.deepseek.com",
-                        model=self.llm_model
-                    )
-                )
-            elif self.openai_api_key:
-                self.llm_config = LlmConfig(
-                    provider="openai",
-                    config=ProviderConfig(
-                        api_key=self.openai_api_key,
-                        base_url=self.openai_base_url or "https://api.openai.com/v1",
-                        model=self.llm_model or "gpt-4o-mini"
                     )
                 )
             else:

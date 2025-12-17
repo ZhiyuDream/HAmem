@@ -614,7 +614,9 @@ class UnifiedCache:
             相似节点列表
         """
         if self.faiss_index is None or self.faiss_index.ntotal == 0:
-            print("⚠️  FAISS索引为空")
+            print(f"⚠️  FAISS索引为空 (namespace: {self.namespace})")
+            print(f"   💡 提示: 请检查是否使用了正确的 namespace")
+            print(f"   💡 如果数据在其他 namespace，请在调用 ask_question() 时指定正确的 namespace")
             return []
         
         # 确保query_embedding是正确的形状

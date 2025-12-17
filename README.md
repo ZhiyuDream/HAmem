@@ -60,9 +60,12 @@ HAmem/
 ├── 📚 InputConfig.py          # Flexible LLM/Embedding configuration
 ├── 📖 INPUT_FORMAT.md         # Input format specification
 ├── 📖 CONFIG_GUIDE.md         # Configuration guide
-└── 🧪 experiment/             # Experiment scripts
-    ├── run_locomo.py          # One-click locomo experiment runner
-    └── calculate_token_and_time_real.py # Token & time calculation
+├── 🧪 experiment/             # Experiment scripts
+│   ├── run_locomo.py          # One-click locomo experiment runner
+│   └── calculate_token_and_time_real.py # Token & time calculation
+└── 📝 examples/               # Usage examples
+    ├── chatbot_example.py     # Chatbot example using search_memory
+    └── README.md              # Examples documentation
 ```
 
 ### Hybrid Search Architecture
@@ -190,6 +193,8 @@ conversation_data = {
 
 #### 使用示例
 
+**基础用法**：
+
 ```python
 from main import HAmem
 
@@ -247,6 +252,36 @@ results = hamem.search_memory("What is the user working on?", namespace=namespac
 
 # Q&A
 answer = hamem.ask_question("What did we discuss?", namespace=namespace)
+```
+
+**聊天机器人示例**（使用 search_memory 检索历史信息并生成对话式回答）：
+
+```python
+from main import HAmem
+from examples.chatbot_example import ChatBot
+
+# 初始化 HAmem
+hamem = HAmem()
+
+# 可选：先构建一些记忆
+hamem.build_memory_from_file("conversation.json")
+
+# 创建聊天机器人
+chatbot = ChatBot(
+    hamem=hamem,
+    namespace="default",
+    save_conversation=True  # 将新对话保存到记忆中
+)
+
+# 启动交互式对话
+chatbot.interactive_chat()
+
+# 或者单次对话
+response = chatbot.chat("你好，我们之前聊过什么？")
+print(response)
+```
+
+详细说明请参考 [examples/README.md](examples/README.md)。
 ```
 
 ## 📊 Core Features

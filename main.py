@@ -112,7 +112,20 @@ class HAmem:
         print(f"❓ Answering question: {question} (namespace: {namespace})")
         
         # 如果namespace不同，需要重新创建QA系统（使用正确的namespace对应的cache）
+        # 或者如果当前cache的FAISS索引为空，也尝试切换namespace
+        should_recreate = False
         if hasattr(self.qa_system, 'namespace') and self.qa_system.namespace != namespace:
+            should_recreate = True
+        elif hasattr(self.qa_system, 'cache') and (
+            self.qa_system.cache.faiss_index is None or 
+            self.qa_system.cache.faiss_index.ntotal == 0
+        ):
+            # 当前cache为空，尝试使用指定的namespace
+            if namespace != self.qa_system.namespace:
+                print(f"  ⚠️  当前cache为空，尝试切换到namespace: {namespace}")
+                should_recreate = True
+        
+        if should_recreate:
             print(f"  🔄 切换namespace: {self.qa_system.namespace} -> {namespace}")
             # 重新创建cache（使用正确的namespace）
             from core.infrastructure import UnifiedCache, EmbeddingManager
