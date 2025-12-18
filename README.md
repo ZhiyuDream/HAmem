@@ -161,15 +161,9 @@ EOF
 HAmem uses Neo4j as the primary storage backend. Make sure Neo4j is running:
 
 ```bash
-# Using Docker (recommended)
-docker run -d \
-  --name neo4j \
-  -p 7474:7474 -p 7687:7687 \
-  -e NEO4J_AUTH=neo4j/your-password \
-  neo4j:latest
 
-# Or install Neo4j locally
-# Visit: https://neo4j.com/download/
+install Neo4j locally
+Visit: https://neo4j.com/download/
 ```
 
 **Note**: If you don't want to use Neo4j, you can set `USE_NEO4J=False` in the `.env` file, and the system will use FAISS for vector search only.
