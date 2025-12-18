@@ -17,7 +17,7 @@
 nohup python run_locomo_experiment.py --dataset yourpath &
 
 # 指定模型和并行数
-nohup python run_locomo_experiment.py --model gpt-4.1-mini --max-workers --dataset yourpath 5 &
+nohup python run_locomo_experiment.py --model gpt-4.1-mini --max-workers 5 --dataset yourpath &
 
 # 只运行记忆构建，跳过QA测试
 nohup python run_locomo_experiment.py --skip-qa --dataset yourpath &
