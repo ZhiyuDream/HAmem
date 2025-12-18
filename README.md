@@ -114,7 +114,7 @@ NEO4J_PASSWORD=your-neo4j-password
 # ============================================
 
 # LLM Model Configuration
-LLM_MODEL=gpt-4o-mini
+LLM_MODEL=gpt-4.1-mini
 LLM_PROVIDER=openai
 
 # Embedding Model Configuration
