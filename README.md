@@ -85,6 +85,8 @@ Query Flow:
 ### 1. Install Dependencies
 
 ```bash
+conda create -n HAmem python=3.11.13
+conda activate HAmem
 pip install -r requirements.txt
 ```
 
