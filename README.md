@@ -358,19 +358,6 @@ python main.py
 # Login with your Neo4j credentials
 ```
 
-## 📚 Documentation
-
-- **API Design**: See `API_DESIGN.md` for detailed API documentation
-- **Project History**: See `PROJECT_HISTORY.md` for development history and features
-
-## 🔍 Key Differences from Original HAmem
-
-This open-source version includes:
-- ✅ **Neo4j Integration** - Graph database for relationship storage
-- ✅ **Hybrid Search** - FAISS + Neo4j for better retrieval
-- ✅ **Multi-tenant Support** - Namespace isolation
-- ✅ **Token Tracking** - Monitor API usage
-- ✅ **Production Ready** - Optimized for deployment
 
 ## 🤝 Contributing
 
