@@ -85,13 +85,17 @@ class AnswerGenerator:
         
         answer = result.get('answer', 'No answer generated')
         reason = result.get('reason', 'No reasoning provided')
+        seed_node_ids = result.get('seed_node_ids', [])
         
         print(f"  ✅ Answer generation completed")
         print(f"  📝 Answer length: {len(answer)} chars")
+        if seed_node_ids:
+            print(f"  🎯 Selected seed nodes: {seed_node_ids}")
         
         return {
             'answer': answer,
             'reason': reason,
+            'seed_node_ids': seed_node_ids,
             'prompt_used': prompt  # 返回完整prompt供调试
         }
     
@@ -160,6 +164,7 @@ class AnswerGenerator:
         if layer2_nodes:
             sections.append("\n### Timeline Information\n")
             for node in layer2_nodes:
+                node_id = node.get('id', 'unknown')  # 获取节点ID
                 node_type = node.get('type', 'unknown').upper()
                 content = node.get('content', '')
                 conversation_time = node.get('conversation_time', '')
@@ -182,16 +187,19 @@ class AnswerGenerator:
                 # Location
                 location_str = f" [location: {location}]" if location and location != "not specified" else ""
                 
-                sections.append(f"- {node_type}{time_str}{participants_str}{location_str}: {content}\n")
+                # 包含节点ID，格式：node_id (TYPE ...): content
+                sections.append(f"- {node_id} ({node_type}{time_str}{participants_str}{location_str}): {content}\n")
         
         # Layer3: Patterns/Rules
         layer3_nodes = context.get('layer3', [])
         if layer3_nodes:
             sections.append("\n### Patterns and Rules\n")
             for node in layer3_nodes:
+                node_id = node.get('id', 'unknown')  # 获取节点ID
                 node_type = node.get('type', 'unknown').upper()
                 content = node.get('content', '')
-                sections.append(f"- {node_type}: {content}\n")
+                # 包含节点ID
+                sections.append(f"- {node_id} ({node_type}): {content}\n")
         
         # Edges
         edges = context.get('edges', [])
@@ -236,13 +244,14 @@ class AnswerGenerator:
             print(f"  ⚠️  Failed to read prompt file {filepath}: {e}")
             return ""
     
-    def _parse_answer_response(self, response: str) -> Dict[str, str]:
+    def _parse_answer_response(self, response: str) -> Dict[str, Any]:
         """
         Parse LLM answer response
         """
         default_result = {
             'answer': 'Unable to generate answer',
-            'reason': 'Failed to parse LLM response'
+            'reason': 'Failed to parse LLM response',
+            'seed_node_ids': []
         }
         
         result = parse_llm_json(
@@ -253,6 +262,14 @@ class AnswerGenerator:
         
         if result is None:
             return default_result
+        
+        # 提取seed_node_ids（如果存在）
+        if 'seed_node_ids' not in result:
+            result['seed_node_ids'] = []
+        
+        # 确保seed_node_ids是列表
+        if not isinstance(result.get('seed_node_ids'), list):
+            result['seed_node_ids'] = []
         
         return result
 

@@ -128,5 +128,5 @@ storage/
 logs/
 *.log
 nohup.out
-experiment/
 data/
+experiment/results/

@@ -234,26 +234,26 @@ class Layer1Neo4jStorage(Neo4jStorageBase):
         self.namespace = base_name
         
         # 查询关系：通过节点的 namespace 来过滤，关系可能没有 namespace 属性
-            query = """
+        query = """
         MATCH (a {namespace: $namespace})-[r]->(b {namespace: $namespace})
-            RETURN a.id as source, b.id as target, type(r) as type, r as properties
-            """
+        RETURN a.id as source, b.id as target, type(r) as type, r as properties
+        """
         result = self.client.execute_read(query, {"namespace": self.namespace})
-            
-            relationships = []
-            for record in result:
-                rel = {
+        
+        relationships = []
+        for record in result:
+            rel = {
                 "source": record.get("source"),
                 "target": record.get("target"),
                 "type": record.get("type"),
             }
-        # 添加关系属性
-        props = record.get("properties")
-        if props:
-            rel.update(dict(props))
-                relationships.append(rel)
-            
-            return relationships
+            # 添加关系属性
+            props = record.get("properties")
+            if props:
+                rel.update(dict(props))
+            relationships.append(rel)
+        
+        return relationships
     
     def get_storage_stats(self, input_filename: str) -> Dict[str, Any]:
         """

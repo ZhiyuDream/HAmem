@@ -44,11 +44,8 @@ class SearchRecall:
         # Layer0 (Fragment): 使用向量相似度搜索
         if layer0_top_k > 0:
             try:
-                from ..infrastructure.embedding import EmbeddingManager
-                from config import Config
-                config = Config()
-                embedding_manager = EmbeddingManager(config)
-                query_embedding, _, _ = self.cache.get_or_generate_embedding(query)
+                # QA问题只获取embedding，不写入FAISS
+                query_embedding = self.cache.get_embedding_only(query)
                 
                 fragment_candidates = self.cache.filter_and_search(
                     query_embedding,
@@ -89,9 +86,9 @@ class SearchRecall:
         """
         Recall nodes by layer
         """
-        # Use cached embedding to avoid duplicates
+        # Use cached embedding to avoid duplicates (QA问题不写入FAISS)
         if query not in self._embedding_cache:
-            self._embedding_cache[query] = self.cache.embedding_manager.get_embedding(query)
+            self._embedding_cache[query] = self.cache.get_embedding_only(query)
         query_embedding = self._embedding_cache[query]
         
         # Use FAISS index with cached embedding
@@ -115,7 +112,7 @@ class SearchRecall:
         """
         # Use cached embedding
         if query not in self._embedding_cache:
-            self._embedding_cache[query] = self.cache.embedding_manager.get_embedding(query)
+            self._embedding_cache[query] = self.cache.get_embedding_only(query)
         query_embedding = self._embedding_cache[query]
         
         candidates = self.cache.filter_and_search(
@@ -139,7 +136,7 @@ class SearchRecall:
         for entity_name in entity_names:
             # Use cached embedding
             if entity_name not in self._embedding_cache:
-                self._embedding_cache[entity_name] = self.cache.embedding_manager.get_embedding(entity_name)
+                self._embedding_cache[entity_name] = self.cache.get_embedding_only(entity_name)
             entity_embedding = self._embedding_cache[entity_name]
             
             # Search entity type only

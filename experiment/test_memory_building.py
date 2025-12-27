@@ -1,5 +1,5 @@
 """
-在实际调用LLM时统计locomo数据集中一个conversation的token数量和时延
+测试记忆构建流程并统计token数量和时延
 
 使用真实的MemoryBuilder.build_memory()流程，包括：
 1. Fragment splitting（LLM调用）
@@ -21,13 +21,15 @@ import os
 import json
 import time
 import tiktoken
+import argparse
 from typing import Dict, Any, List
 
 # 添加项目根目录到路径
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
 
 from config import Config
-from main import HAmem
+from core.main import HAmem
 from core.infrastructure.token_tracker import TokenTracker
 
 
@@ -176,29 +178,36 @@ def create_token_tracking_llm_client(config: Config, token_tracker: TokenTracker
     return TokenTrackingLLMClient(config, token_tracker, default_provider)
 
 
-def calculate_token_and_time_real(conversation_idx: int, dataset_path: str = None, llm_provider: str = "openai", skip_storage: bool = False):
+def test_memory_building(conversation_idx: int, dataset_path: str = None, model: str = None, skip_storage: bool = False, namespace: str = None):
     """
-    在实际调用LLM时计算指定conversation的token数量和时延
+    测试记忆构建流程并统计token和时延
     
     Args:
         conversation_idx: conversation索引（从0开始）
         dataset_path: 数据集路径
-        llm_provider: LLM提供商 ("openai" 或 "deepseek")
+        model: LLM模型名称，如 gpt-4o-mini, deepseek-chat 等（如果未指定，使用Config中的默认值）
         skip_storage: 是否跳过Neo4j存储（仅用于测试，不影响token统计）
+        namespace: 命名空间（如果为None，使用默认值 locomo_conv_{conversation_idx}）
     """
     if dataset_path is None:
-        # 默认路径
+        # 默认路径（相对于项目根目录）
         dataset_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
+            project_root,
             "locomo", "data", "locomo10.json"
         )
+    
+    # 检查文件是否存在
+    if not os.path.exists(dataset_path):
+        print(f"❌ 错误: 数据集文件不存在: {dataset_path}")
+        print(f"   请使用 --dataset 参数指定正确的数据集路径")
+        return None
     
     # 加载数据集
     dataset = load_locomo_dataset(dataset_path)
     
     if conversation_idx >= len(dataset):
         print(f"❌ 错误: conversation索引 {conversation_idx} 超出范围（共 {len(dataset)} 个conversation）")
-        return
+        return None
     
     # 获取conversation
     conversation_data = dataset[conversation_idx]
@@ -209,7 +218,7 @@ def calculate_token_and_time_real(conversation_idx: int, dataset_path: str = Non
     
     print(f"\n📊 Conversation {conversation_idx} 统计:")
     print(f"  - 消息数量: {len(messages)}")
-    print(f"  - LLM提供商: {llm_provider}")
+    print(f"  - 数据集路径: {dataset_path}")
     if skip_storage:
         print(f"  - ⚠️  跳过Neo4j存储（仅测试模式）")
     
@@ -226,26 +235,38 @@ def calculate_token_and_time_real(conversation_idx: int, dataset_path: str = Non
     # 创建token追踪器
     token_tracker = TokenTracker()
     
-    print(f"\n🔄 开始实际记忆构建流程（使用{llm_provider}）...")
+    # 初始化Config
+    config = Config()
     
-    # 创建token追踪器
-    token_tracker = TokenTracker()
+    # 如果指定了模型，设置模型
+    if model:
+        config.set_llm_model(model)
+        print(f"  - 使用模型: {model}")
+    else:
+        actual_model = config.llm_model
+        print(f"  - 使用模型: {actual_model} (来自配置)")
+    
+    print(f"\n🔄 开始实际记忆构建流程...")
     
     # 初始化HAmem
-    config = Config()
     hamem = HAmem(config)
     
     # 记录开始时间
     start_time = time.time()
     
     # 构建记忆（传入token_tracker）
-    namespace = f"locomo_conv_{conversation_idx}"
+    # 如果没有指定namespace，使用默认值
+    if namespace is None:
+        namespace = f"locomo_conv_{conversation_idx}"
+    
+    print(f"  - Namespace: {namespace}")
+    
     try:
-        # 注意：需要修改HAmem.build_memory()来接受token_tracker参数
-        # 或者直接调用MemoryBuilder.build_memory()
-        from memory import MemoryBuilder, ConversationData
+        from core.memory import MemoryBuilder, ConversationData
         memory_builder = MemoryBuilder(config)
         conversation = ConversationData.from_dict(hamem_data)
+        # 使用config中的provider（从模型推断或配置中获取）
+        llm_provider = config.llm_provider
         result = memory_builder.build_memory(conversation, namespace=namespace, token_tracker=token_tracker, llm_provider=llm_provider)
         
         # 记录结束时间
@@ -338,6 +359,7 @@ def calculate_token_and_time_real(conversation_idx: int, dataset_path: str = Non
             "original_tokens": original_tokens,
             "total_time": total_time,
             "time_stats": time_stats,
+            "token_stats": token_stats,
             "result": result
         }
         
@@ -348,21 +370,62 @@ def calculate_token_and_time_real(conversation_idx: int, dataset_path: str = Non
         return None
 
 
+def main():
+    parser = argparse.ArgumentParser(
+        description="测试记忆构建流程并统计token数量和时延",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例:
+  # 使用默认模型（从Config读取）
+  python test_memory_building.py 0
+  
+  # 指定模型
+  python test_memory_building.py 0 --model gpt-4o-mini
+  
+  # 指定数据集路径和模型
+  python test_memory_building.py 0 --dataset /path/to/locomo10.json --model deepseek-chat
+  
+  # 跳过Neo4j存储（仅测试模式）
+  python test_memory_building.py 0 --skip-storage
+        """
+    )
+    
+    parser.add_argument(
+        "conversation_idx",
+        type=int,
+        help="conversation索引（从0开始）"
+    )
+    
+    parser.add_argument(
+        "--dataset", "-d",
+        type=str,
+        default="/home/zhiyu_zheng/DCL/Others/locomo/data/locomo10.json",
+        help="数据集路径（默认: <project_root>/locomo/data/locomo10.json）"
+    )
+    
+    parser.add_argument(
+        "--model", "-m",
+        type=str,
+        default=None,
+        help="LLM模型名称，如 gpt-4o-mini, deepseek-chat 等（如果未指定，使用Config中的默认值）"
+    )
+    
+    parser.add_argument(
+        "--skip-storage",
+        action="store_true",
+        help="跳过Neo4j存储（仅用于测试，不影响token统计）"
+    )
+    
+    args = parser.parse_args()
+    
+    test_memory_building(
+        conversation_idx=args.conversation_idx,
+        dataset_path=args.dataset,
+        model=args.model,
+        skip_storage=args.skip_storage
+    )
+
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("用法: python calculate_token_and_time_real.py <conversation_idx> [llm_provider] [dataset_path] [--skip-storage]")
-        print("示例: python calculate_token_and_time_real.py 0 openai")
-        print("      python calculate_token_and_time_real.py 0 deepseek --skip-storage")
-        sys.exit(1)
-    
-    conversation_idx = int(sys.argv[1])
-    llm_provider = sys.argv[2] if len(sys.argv) > 2 else "openai"
-    dataset_path = sys.argv[3] if len(sys.argv) > 3 and not sys.argv[3].startswith("--") else None
-    skip_storage = "--skip-storage" in sys.argv
-    
-    if llm_provider not in ["openai", "deepseek"]:
-        print(f"❌ 错误: 不支持的LLM提供商 '{llm_provider}'，请使用 'openai' 或 'deepseek'")
-        sys.exit(1)
-    
-    calculate_token_and_time_real(conversation_idx, dataset_path, llm_provider, skip_storage)
+    main()
 

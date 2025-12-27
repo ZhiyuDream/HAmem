@@ -11,6 +11,40 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def sanitize_relationship_type(rel_type: str) -> str:
+    """
+    清理关系类型名称，确保符合 Neo4j 的命名规范
+    
+    Neo4j 的关系类型名称只能包含字母、数字和下划线，不能包含连字符等特殊字符
+    
+    Args:
+        rel_type: 原始关系类型名称
+        
+    Returns:
+        清理后的关系类型名称
+    """
+    if not rel_type:
+        return "RELATED_TO"
+    
+    # 将连字符和其他无效字符替换为下划线
+    # 只保留字母、数字和下划线
+    import re
+    # 将连字符、空格等替换为下划线
+    sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', rel_type)
+    # 移除连续的下划线
+    sanitized = re.sub(r'_+', '_', sanitized)
+    # 移除开头和结尾的下划线
+    sanitized = sanitized.strip('_')
+    # 转换为大写
+    sanitized = sanitized.upper()
+    
+    # 如果清理后为空，使用默认值
+    if not sanitized:
+        sanitized = "RELATED_TO"
+    
+    return sanitized
+
+
 class Neo4jStorageBase:
     """Neo4j 存储基类"""
     
@@ -102,10 +136,13 @@ class Neo4jStorageBase:
         else:
             rel_props_str = ""
         
+        # 清理关系类型名称，确保符合 Neo4j 规范
+        sanitized_rel_type = sanitize_relationship_type(rel_type)
+        
         query = f"""
         MATCH (a {{id: $source_id, namespace: $namespace}})
         MATCH (b {{id: $target_id, namespace: $namespace}})
-        MERGE (a)-[r:{rel_type.upper()}{rel_props_str}]->(b)
+        MERGE (a)-[r:{sanitized_rel_type}{rel_props_str}]->(b)
         """
         
         params = {

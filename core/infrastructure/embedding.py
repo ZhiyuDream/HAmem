@@ -1,7 +1,7 @@
 """
 Embedding管理模块
 
-调用OpenAI embedding API生成向量
+支持多种Embedding提供商（OpenAI、DeepSeek、HuggingFace等）
 """
 
 import os
@@ -17,19 +17,43 @@ class EmbeddingManager:
     
     def __init__(self, config: Config):
         self.config = config
+        self.embedding_config = config.embedding_config
         self.client = None
         self._init_client()
     
     def _init_client(self):
-        """初始化OpenAI客户端"""
-        if self.config.openai_api_key:
+        """初始化客户端"""
+        if not self.embedding_config:
+            raise ValueError("Embedding配置未提供")
+        
+        provider = self.embedding_config.provider
+        provider_config = self.embedding_config.config
+        
+        # 根据提供商初始化客户端
+        if provider in ['openai', 'deepseek', 'azure_openai', 'together']:
+            # 这些提供商使用OpenAI兼容的API
+            base_url = self.embedding_config.get_base_url()
+            if not base_url:
+                if provider == 'openai':
+                    base_url = 'https://api.openai.com/v1'
+                elif provider == 'deepseek':
+                    base_url = 'https://api.deepseek.com'
+            
             self.client = OpenAI(
-                api_key=self.config.openai_api_key,
-                base_url=self.config.openai_base_url,
-                timeout=60.0
+                api_key=self.embedding_config.get_api_key(),
+                base_url=base_url,
+                timeout=provider_config.timeout or 60.0
+            )
+        elif provider == 'ollama':
+            # Ollama使用本地API
+            base_url = self.embedding_config.get_base_url() or 'http://localhost:11434/v1'
+            self.client = OpenAI(
+                api_key='ollama',
+                base_url=base_url,
+                timeout=provider_config.timeout or 60.0
             )
         else:
-            raise ValueError("OpenAI API密钥未配置")
+            raise ValueError(f"不支持的Embedding提供商: {provider}")
     
     def get_embedding(self, text: str, model: str = None, max_retries: int = 3) -> List[float]:
         """
@@ -44,24 +68,33 @@ class EmbeddingManager:
             List[float]: embedding向量，失败时抛出异常
         """
         if not self.client:
-            raise ValueError("OpenAI客户端未初始化")
+            raise ValueError("Embedding客户端未初始化")
         
         if not model:
-            model = self.config.embedding_model
+            model = self.embedding_config.config.model
         
         last_error = None
         for attempt in range(max_retries):
             try:
-                response = self.client.embeddings.create(
-                    model=model,
-                    input=text
-                )
+                # 构建请求参数
+                params = {
+                    "model": model,
+                    "input": text
+                }
+                
+                # 添加维度参数（如果支持）
+                dimensions = self.embedding_config.get_dimensions()
+                if dimensions and self.embedding_config.provider == 'openai':
+                    params["dimensions"] = dimensions
+                
+                response = self.client.embeddings.create(**params)
                 
                 embedding = response.data[0].embedding
                 
-                # 验证embedding维度
-                if len(embedding) != 1536:
-                    raise ValueError(f"Embedding维度错误: {len(embedding)}, 期望1536")
+                # 验证embedding维度（根据配置）
+                expected_dim = self.embedding_config.get_dimensions() or 1536
+                if len(embedding) != expected_dim:
+                    raise ValueError(f"Embedding维度错误: {len(embedding)}, 期望{expected_dim}")
                 
                 return embedding
             
@@ -91,10 +124,10 @@ class EmbeddingManager:
             List[List[float]]: embedding向量列表，失败时抛出异常
         """
         if not self.client:
-            raise ValueError("OpenAI客户端未初始化")
+            raise ValueError("Embedding客户端未初始化")
         
         if not model:
-            model = self.config.embedding_model
+            model = self.embedding_config.config.model
         
         last_error = None
         
@@ -107,17 +140,26 @@ class EmbeddingManager:
                 for i in range(0, len(texts), batch_size):
                     batch_texts = texts[i:i + batch_size]
                     
-                    response = self.client.embeddings.create(
-                        model=model,
-                        input=batch_texts
-                    )
+                    # 构建请求参数
+                    params = {
+                        "model": model,
+                        "input": batch_texts
+                    }
+                    
+                    # 添加维度参数（如果支持）
+                    dimensions = self.embedding_config.get_dimensions()
+                    if dimensions and self.embedding_config.provider == 'openai':
+                        params["dimensions"] = dimensions
+                    
+                    response = self.client.embeddings.create(**params)
                     
                     batch_embeddings = [data.embedding for data in response.data]
                     
-                    # 验证每个embedding的维度
+                    # 验证每个embedding的维度（根据配置）
+                    expected_dim = self.embedding_config.get_dimensions() or 1536
                     for idx, emb in enumerate(batch_embeddings):
-                        if len(emb) != 1536:
-                            raise ValueError(f"Embedding[{idx}]维度错误: {len(emb)}, 期望1536")
+                        if len(emb) != expected_dim:
+                            raise ValueError(f"Embedding[{idx}]维度错误: {len(emb)}, 期望{expected_dim}")
                     
                     all_embeddings.extend(batch_embeddings)
                     

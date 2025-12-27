@@ -70,8 +70,7 @@ class Neo4jClient:
             # 检测Neo4j版本（社区版不支持向量索引）
             self.is_community_edition = self._check_community_edition()
             if self.is_community_edition:
-                self.logger.info(f"✅ Connected to Neo4j Community Edition at {self.uri}")
-                self.logger.warning("⚠️  Neo4j社区版不支持原生向量索引，将使用cache（FAISS）进行向量搜索")
+                self.logger.info(f"✅ Connected to Neo4j Community Edition at {self.uri} (使用cache/FAISS进行向量搜索)")
             else:
                 self.logger.info(f"✅ Connected to Neo4j Enterprise Edition at {self.uri}")
             return True
@@ -154,10 +153,10 @@ class Neo4jClient:
             raise RuntimeError("Neo4j driver not initialized. Call connect() first.")
         
         with self.driver.session(database=self.database) as session:
-            result = session.write_transaction(
+              result = session.execute_write(
                 lambda tx: list(tx.run(query, parameters or {}))
             )
-            return [record.data() for record in result]
+        return [record.data() for record in result]
     
     def execute_read(self, query: str, parameters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
@@ -174,7 +173,7 @@ class Neo4jClient:
             raise RuntimeError("Neo4j driver not initialized. Call connect() first.")
         
         with self.driver.session(database=self.database) as session:
-            result = session.read_transaction(
+            result = session.execute_read(
                 lambda tx: list(tx.run(query, parameters or {}))
             )
             return [record.data() for record in result]

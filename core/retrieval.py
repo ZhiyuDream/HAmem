@@ -1,7 +1,7 @@
 """
 Retrieval Engine and QA System initialization
 
-Provides RetrievalEngine and QASystem classes for main.py
+Provides RetrievalEngine and QASystem classes for core.main
 """
 
 from typing import Dict, Any, Optional
