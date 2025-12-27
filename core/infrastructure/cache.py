@@ -13,6 +13,7 @@ import json
 import hashlib
 import numpy as np
 import faiss
+import threading
 from typing import Dict, List, Optional, Any, Tuple
 from .embedding import EmbeddingManager
 
@@ -60,6 +61,9 @@ class UnifiedCache:
         self.idx_to_edge_id = {}       # embedding_idx → [edge_id, ...]
         self.embeddings = []           # List[np.ndarray]
         self.faiss_index = None        # FAISS索引
+        
+        # 线程锁：保护FAISS索引访问（FAISS不是线程安全的）
+        self._faiss_lock = threading.Lock()
         
         # 加载现有缓存
         self._load_cache()
@@ -190,12 +194,53 @@ class UnifiedCache:
         self.embeddings.append(embedding_array)
         self.content_hash_to_idx[content_hash] = idx
         
-        # 更新FAISS索引
-        if self.faiss_index is None:
-            self.faiss_index = faiss.IndexFlatIP(1536)  # 内积索引
-        self.faiss_index.add(embedding_array.reshape(1, -1))
+        # 更新FAISS索引（使用锁保护）
+        with self._faiss_lock:
+            if self.faiss_index is None:
+                self.faiss_index = faiss.IndexFlatIP(1536)  # 内积索引
+            self.faiss_index.add(embedding_array.reshape(1, -1))
         
         return embedding_array, idx, True  # 新生成
+    
+    def get_embedding_only(self, content: str) -> np.ndarray:
+        """
+        只获取embedding，不写入FAISS（用于QA问题等只读场景）
+        
+        Args:
+            content: 文本内容
+        
+        Returns:
+            embedding向量
+        """
+        if not content or not content.strip():
+            return np.zeros(1536, dtype='float32')
+        
+        # 计算content hash
+        content_hash = self._compute_content_hash(content)
+        
+        # 检查是否已存在（复用已有embedding）
+        if content_hash in self.content_hash_to_idx:
+            idx = self.content_hash_to_idx[content_hash]
+            return self.embeddings[idx]
+        
+        # 生成新embedding（但不写入FAISS）
+        if self.embedding_manager is None:
+            raise ValueError("EmbeddingManager未初始化，无法生成embedding")
+        
+        embedding = self.embedding_manager.get_embedding(content)
+        
+        # 验证embedding
+        if not embedding or len(embedding) != 1536:
+            raise ValueError(f"无效的embedding: 长度={len(embedding) if embedding else 0}, 期望1536")
+        
+        embedding_array = np.array(embedding, dtype='float32')
+        
+        # 验证数组形状
+        if embedding_array.shape != (1536,):
+            raise ValueError(f"Embedding数组形状错误: {embedding_array.shape}, 期望(1536,)")
+        
+        # 只返回embedding，不写入FAISS
+        return embedding_array
     
     def add_node(self, node: Dict[str, Any]) -> None:
         """
@@ -342,10 +387,11 @@ class UnifiedCache:
                     content_hash = self._compute_content_hash(content)
                     self.content_hash_to_idx[content_hash] = idx
                     
-                    # 添加到FAISS索引
-                    if self.faiss_index is None:
-                        self.faiss_index = faiss.IndexFlatIP(1536)
-                    self.faiss_index.add(embedding_array.reshape(1, -1))
+                    # 添加到FAISS索引（使用锁保护）
+                    with self._faiss_lock:
+                        if self.faiss_index is None:
+                            self.faiss_index = faiss.IndexFlatIP(1536)
+                        self.faiss_index.add(embedding_array.reshape(1, -1))
                     
                     print(f"  ✅ 新embedding [{idx}]: {content[:50]}...")
         
@@ -445,10 +491,11 @@ class UnifiedCache:
                     content_hash = self._compute_content_hash(content)
                     self.content_hash_to_idx[content_hash] = idx
                     
-                    # 添加到FAISS索引
-                    if self.faiss_index is None:
-                        self.faiss_index = faiss.IndexFlatIP(1536)
-                    self.faiss_index.add(embedding_array.reshape(1, -1))
+                    # 添加到FAISS索引（使用锁保护）
+                    with self._faiss_lock:
+                        if self.faiss_index is None:
+                            self.faiss_index = faiss.IndexFlatIP(1536)
+                        self.faiss_index.add(embedding_array.reshape(1, -1))
                     
                     print(f"  ✅ 新边embedding [{idx}]: {content[:50]}...")
         
@@ -572,15 +619,17 @@ class UnifiedCache:
         Returns:
             相似节点列表，包含node和similarity
         """
-        if self.faiss_index is None or self.faiss_index.ntotal == 0:
-            print("⚠️  FAISS索引为空")
-            return []
-        
-        # 确保query_embedding是正确的形状
-        query_array = np.array(query_embedding, dtype='float32').reshape(1, -1)
-        
-        # FAISS检索
-        D, I = self.faiss_index.search(query_array, k=min(top_k, self.faiss_index.ntotal))
+        # 使用锁保护FAISS访问（包括读取ntotal属性）
+        with self._faiss_lock:
+            if self.faiss_index is None or self.faiss_index.ntotal == 0:
+                print("⚠️  FAISS索引为空")
+                return []
+            
+            # 确保query_embedding是正确的形状
+            query_array = np.array(query_embedding, dtype='float32').reshape(1, -1)
+            
+            # FAISS检索（FAISS不是线程安全的）
+            D, I = self.faiss_index.search(query_array, k=min(top_k, self.faiss_index.ntotal))
         
         # 获取完整节点信息
         results = []
@@ -613,24 +662,27 @@ class UnifiedCache:
         Returns:
             相似节点列表
         """
-        if self.faiss_index is None or self.faiss_index.ntotal == 0:
-            print(f"⚠️  FAISS索引为空 (namespace: {self.namespace})")
-            print(f"   💡 提示: 请检查是否使用了正确的 namespace")
-            print(f"   💡 如果数据在其他 namespace，请在调用 ask_question() 时指定正确的 namespace")
-            return []
-        
-        # 确保query_embedding是正确的形状
-        query_array = np.array(query_embedding, dtype='float32').reshape(1, -1)
-        
-        # FAISS检索（召回更多候选）
-        # 如果有过滤条件（特别是layer过滤），需要搜索更多候选以确保能找到足够的匹配节点
-        if filters and 'layer' in filters:
-            # 对于layer过滤，搜索更多候选（因为可能大部分节点都不是目标layer）
-            k_candidates = min(top_k * 50, self.faiss_index.ntotal)
-        else:
-            k_candidates = min(top_k * 5, self.faiss_index.ntotal)
-        
-        D, I = self.faiss_index.search(query_array, k=k_candidates)
+        # 使用锁保护FAISS访问（包括读取ntotal属性）
+        with self._faiss_lock:
+            if self.faiss_index is None or self.faiss_index.ntotal == 0:
+                print(f"⚠️  FAISS索引为空 (namespace: {self.namespace})")
+                print(f"   💡 提示: 请检查是否使用了正确的 namespace")
+                print(f"   💡 如果数据在其他 namespace，请在调用 ask_question() 时指定正确的 namespace")
+                return []
+            
+            # 确保query_embedding是正确的形状
+            query_array = np.array(query_embedding, dtype='float32').reshape(1, -1)
+            
+            # FAISS检索（召回更多候选）
+            # 如果有过滤条件（特别是layer过滤），需要搜索更多候选以确保能找到足够的匹配节点
+            if filters and 'layer' in filters:
+                # 对于layer过滤，搜索更多候选（因为可能大部分节点都不是目标layer）
+                k_candidates = min(top_k * 50, self.faiss_index.ntotal)
+            else:
+                k_candidates = min(top_k * 5, self.faiss_index.ntotal)
+            
+            # FAISS检索（FAISS不是线程安全的）
+            D, I = self.faiss_index.search(query_array, k=k_candidates)
         
         # 应用过滤条件
         results = []

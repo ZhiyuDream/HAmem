@@ -178,7 +178,7 @@ def create_token_tracking_llm_client(config: Config, token_tracker: TokenTracker
     return TokenTrackingLLMClient(config, token_tracker, default_provider)
 
 
-def test_memory_building(conversation_idx: int, dataset_path: str = None, model: str = None, skip_storage: bool = False):
+def test_memory_building(conversation_idx: int, dataset_path: str = None, model: str = None, skip_storage: bool = False, namespace: str = None):
     """
     测试记忆构建流程并统计token和时延
     
@@ -187,6 +187,7 @@ def test_memory_building(conversation_idx: int, dataset_path: str = None, model:
         dataset_path: 数据集路径
         model: LLM模型名称，如 gpt-4o-mini, deepseek-chat 等（如果未指定，使用Config中的默认值）
         skip_storage: 是否跳过Neo4j存储（仅用于测试，不影响token统计）
+        namespace: 命名空间（如果为None，使用默认值 locomo_conv_{conversation_idx}）
     """
     if dataset_path is None:
         # 默认路径（相对于项目根目录）
@@ -254,7 +255,12 @@ def test_memory_building(conversation_idx: int, dataset_path: str = None, model:
     start_time = time.time()
     
     # 构建记忆（传入token_tracker）
-    namespace = f"locomo_conv_{conversation_idx}"
+    # 如果没有指定namespace，使用默认值
+    if namespace is None:
+        namespace = f"locomo_conv_{conversation_idx}"
+    
+    print(f"  - Namespace: {namespace}")
+    
     try:
         from core.memory import MemoryBuilder, ConversationData
         memory_builder = MemoryBuilder(config)

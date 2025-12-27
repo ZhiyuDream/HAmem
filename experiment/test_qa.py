@@ -32,6 +32,26 @@ from core.main import HAmem
 from core.infrastructure.token_tracker import TokenTracker
 from core.infrastructure.llm import LLMClient
 
+
+def generate_namespace_from_filepath(dataset_path: str, conversation_idx: int) -> str:
+    """
+    根据数据集文件路径和conversation索引生成namespace
+    
+    Args:
+        dataset_path: 数据集文件路径
+        conversation_idx: conversation索引
+    
+    Returns:
+        namespace字符串，格式：文件名_conv_索引
+    """
+    # 获取文件名（不含扩展名）
+    file_basename = os.path.basename(dataset_path)
+    file_name, _ = os.path.splitext(file_basename)
+    
+    # 生成namespace
+    namespace = f"{file_name}_conv_{conversation_idx}"
+    return namespace
+
 # LLM Judge评估的Prompt
 ACCURACY_PROMPT = """
 Your task is to label an answer to a question as 'CORRECT' or 'WRONG'. You will be given the following data:
@@ -153,11 +173,12 @@ def count_tokens(text: str, encoding) -> int:
 class TokenTrackingLLMClient(LLMClient):
     """支持token追踪的LLMClient包装器"""
     
-    def __init__(self, config, token_tracker, default_provider="deepseek"):
+    def __init__(self, config, token_tracker, default_provider="deepseek", debug_print_prompt=False):
         super().__init__(config)
         self.token_tracker = token_tracker
         self.default_provider = default_provider
         self._current_call_type = None
+        self.debug_print_prompt = debug_print_prompt
     
     def call_llm(self, prompt: str, model: str = None, provider: str = "deepseek", return_usage: bool = False, call_type: str = None):
         """
@@ -173,6 +194,18 @@ class TokenTrackingLLMClient(LLMClient):
         # 设置调用类型
         if call_type:
             self._current_call_type = call_type
+        
+        # 如果启用调试模式，打印完整prompt
+        if self.debug_print_prompt:
+            call_type_str = call_type or "Unknown"
+            print(f"\n{'='*80}")
+            print(f"🔍 LLM调用 - 类型: {call_type_str}, Provider: {provider}, Model: {model or 'default'}")
+            print(f"{'='*80}")
+            print(f"完整Prompt ({len(prompt)} 字符):")
+            print(f"{'-'*80}")
+            print(prompt)
+            print(f"{'-'*80}")
+            print(f"{'='*80}\n")
         
         # 调用父类方法，强制返回usage
         result = super().call_llm(prompt, model, provider, return_usage=True)
@@ -258,22 +291,22 @@ def process_single_qa(
     # 计算问题的token数
     question_tokens = count_tokens(question, encoding)
     
-    # 记录开始时间
-    start_time = time.time()
+    # 记录开始时间（QA响应时间，不包括评估）
+    qa_start_time = time.time()
     
     try:
         # 调用QA系统
         answer_result = qa_system.answer_question(question)
         
-        # 记录结束时间
-        end_time = time.time()
-        elapsed_time = end_time - start_time
+        # 记录QA结束时间（响应生成完成）
+        qa_end_time = time.time()
+        qa_response_time = qa_end_time - qa_start_time  # 真实响应时间（不包括评估）
         
         answer = answer_result.get('answer', 'N/A')
         reason = answer_result.get('reason', 'N/A')
         stats = answer_result.get('stats', {})
         
-        # LLM Judge评估（如果有期望答案）
+        # LLM Judge评估（如果有期望答案，评估时间不计入响应时间）
         evaluation_result = None
         if expected_answer:
             evaluation_result = evaluate_answer_with_llm_judge(
@@ -292,7 +325,8 @@ def process_single_qa(
             'expected_answer': expected_answer,
             'category': category,
             'reason': reason,
-            'elapsed_time': elapsed_time,
+            'elapsed_time': qa_response_time,  # 真实响应时间（不包括评估）
+            'qa_response_time': qa_response_time,  # 明确标识为QA响应时间
             'stats': stats,
             'evaluation': evaluation_result
         }
@@ -307,7 +341,8 @@ def process_single_qa(
             'question_tokens': question_tokens,
             'category': category,
             'error': error_msg,
-            'elapsed_time': time.time() - start_time
+            'elapsed_time': time.time() - qa_start_time,
+            'qa_response_time': time.time() - qa_start_time
         }
 
 
@@ -318,7 +353,12 @@ def test_qa(
     model: str = None,
     namespace: str = None,
     parallel: int = 50,
-    all_conversations: bool = False
+    all_conversations: bool = False,
+    max_hops: int = 2,
+    save_results: bool = True,
+    category_filter: Optional[int] = None,
+    debug_print_prompt: bool = False,
+    max_questions: Optional[int] = None
 ):
     """
     测试QA系统并统计token和时延
@@ -331,6 +371,7 @@ def test_qa(
         namespace: 命名空间（如果为None，使用默认值）
         parallel: 并行处理数量
         all_conversations: 是否测试所有conversation（如果为True，会测试所有conversation的QA）
+        max_hops: 最大扩散跳数（默认: 2）
     """
     if dataset_path is None:
         # 默认路径（相对于项目根目录）
@@ -366,7 +407,12 @@ def test_qa(
                 model=model,
                 namespace=None,  # 使用默认namespace
                 parallel=parallel,
-                all_conversations=False  # 避免无限递归
+                all_conversations=False,  # 避免无限递归
+                max_hops=max_hops,
+                save_results=False,  # 所有conversation测试时，单个conversation不单独保存
+                category_filter=category_filter,  # 传递category过滤参数
+                debug_print_prompt=debug_print_prompt,  # 传递调试参数
+                max_questions=max_questions  # 传递问题数量限制
             )
             
             if result:
@@ -383,11 +429,19 @@ def test_qa(
         total_questions = 0
         total_correct = 0
         total_evaluated = 0
+        total_time = 0.0
+        total_wall_time = 0.0
+        total_question_tokens = 0
+        total_llm_tokens = 0
         category_stats_all = defaultdict(lambda: {'total': 0, 'correct': 0})
+        
+        # 汇总所有conversation的token统计
+        all_token_stats = {}
         
         for conv_result in all_conversation_results:
             conv_idx = conv_result['conversation_idx']
-            results = conv_result['result'].get('results', [])
+            result = conv_result['result']
+            results = result.get('results', [])
             
             evaluated_results = [r for r in results if r.get('evaluation') is not None]
             correct_count = sum(1 for r in evaluated_results if r['evaluation'].get('score', 0) == 1)
@@ -395,21 +449,58 @@ def test_qa(
             total_questions += len(results)
             total_evaluated += len(evaluated_results)
             total_correct += correct_count
+            total_time += result.get('total_time', 0.0)
+            total_wall_time += result.get('total_wall_time', 0.0)
+            
+            # 累计问题token数
+            for r in results:
+                total_question_tokens += r.get('question_tokens', 0)
+            
+            # 合并token统计
+            conv_token_stats = result.get('token_stats', {})
+            if conv_token_stats:
+                for call_type, stats in conv_token_stats.items():
+                    if call_type == "by_provider":
+                        continue
+                    if call_type not in all_token_stats:
+                        all_token_stats[call_type] = {
+                            'prompt_tokens': 0,
+                            'completion_tokens': 0,
+                            'total_tokens': 0,
+                            'calls': 0
+                        }
+                    all_token_stats[call_type]['prompt_tokens'] += stats.get('prompt_tokens', 0)
+                    all_token_stats[call_type]['completion_tokens'] += stats.get('completion_tokens', 0)
+                    all_token_stats[call_type]['total_tokens'] += stats.get('total_tokens', 0)
+                    all_token_stats[call_type]['calls'] += stats.get('calls', 0)
             
             # 按类别统计
-            for result in evaluated_results:
-                category = result.get('category')
+            for result_item in evaluated_results:
+                category = result_item.get('category')
                 if category is not None:
                     category_stats_all[category]['total'] += 1
-                    if result['evaluation'].get('score', 0) == 1:
+                    if result_item['evaluation'].get('score', 0) == 1:
                         category_stats_all[category]['correct'] += 1
+        
+        # 计算总LLM token数
+        for call_type, stats in all_token_stats.items():
+            total_llm_tokens += stats.get('total_tokens', 0)
         
         overall_accuracy = total_correct / total_evaluated if total_evaluated > 0 else 0.0
         
+        print(f"  - 最大扩散跳数: {max_hops}")
         print(f"  - 总问题数: {total_questions}")
         print(f"  - 评估问题数: {total_evaluated}")
         print(f"  - 正确答案数: {total_correct}")
         print(f"  - 总体准确率: {overall_accuracy:.4f} ({total_correct}/{total_evaluated})")
+        print(f"  - 总CPU时间: {total_time:.2f} 秒")
+        print(f"  - 总墙钟时间: {total_wall_time:.2f} 秒")
+        if total_questions > 0:
+            print(f"  - 平均CPU时间: {total_time/total_questions:.2f} 秒/问题")
+            print(f"  - 平均墙钟时间: {total_wall_time/total_questions:.2f} 秒/问题")
+        print(f"  - 问题token总计: {total_question_tokens:,} tokens")
+        print(f"  - LLM token总计: {total_llm_tokens:,} tokens")
+        print(f"  - 总token数: {total_question_tokens + total_llm_tokens:,} tokens")
         
         if category_stats_all:
             print(f"\n📊 所有Conversation按类别统计:")
@@ -424,27 +515,36 @@ def test_qa(
         result_data = {
             'all_conversations': True,
             'model': model or Config().llm_model,
+            'max_hops': max_hops,  # 保存max_hops信息
             'overall_summary': {
                 'total_questions': total_questions,
                 'total_evaluated': total_evaluated,
                 'total_correct': total_correct,
                 'overall_accuracy': overall_accuracy,
+                'total_time': total_time,
+                'total_wall_time': total_wall_time,
+                'total_question_tokens': total_question_tokens,
+                'total_llm_tokens': total_llm_tokens,
+                'total_tokens': total_question_tokens + total_llm_tokens,
                 'category_stats': dict(category_stats_all)
             },
             'conversation_results': all_conversation_results
         }
         
-        # 保存结果到JSON文件
-        output_dir = os.path.join(project_root, "experiment", "results")
-        os.makedirs(output_dir, exist_ok=True)
-        output_file = os.path.join(output_dir, f"qa_evaluation_all_conversations_{int(time.time())}.json")
-        
-        try:
-            with open(output_file, 'w', encoding='utf-8') as f:
-                json.dump(result_data, f, ensure_ascii=False, indent=2)
-            print(f"\n💾 评估结果已保存到: {output_file}")
-        except Exception as e:
-            print(f"⚠️  保存结果失败: {e}")
+        # 保存结果到JSON文件（文件名包含max_hops）
+        if save_results:
+            output_dir = os.path.join(project_root, "experiment", "results")
+            os.makedirs(output_dir, exist_ok=True)
+            output_file = os.path.join(output_dir, f"qa_evaluation_all_conversations_hops{max_hops}_{int(time.time())}.json")
+            
+            try:
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    json.dump(result_data, f, ensure_ascii=False, indent=2)
+                print(f"\n💾 评估结果已保存到: {output_file}")
+            except Exception as e:
+                print(f"⚠️  保存结果失败: {e}")
+        else:
+            print(f"\nℹ️  跳过保存结果文件（--no-save 选项）")
         
         return result_data
     
@@ -465,24 +565,40 @@ def test_qa(
         print(f"❌ 错误: conversation {conversation_idx} 没有QA对")
         return None
     
-    # 过滤掉 category=5 的问题
-    filtered_qa_pairs = [qa for qa in qa_pairs if qa.get("category") != 5]
+    # 过滤问题
+    filtered_qa_pairs = [qa for qa in qa_pairs if qa.get("category") != 5]  # 始终过滤category=5
     filtered_count = len(qa_pairs) - len(filtered_qa_pairs)
     if filtered_count > 0:
         print(f"ℹ️  过滤掉 {filtered_count} 个 category=5 的问题")
     
+    # 如果指定了category_filter，只保留该category的问题
+    if category_filter is not None:
+        original_count = len(filtered_qa_pairs)
+        filtered_qa_pairs = [qa for qa in filtered_qa_pairs if qa.get("category") == category_filter]
+        filtered_count = original_count - len(filtered_qa_pairs)
+        if filtered_count > 0:
+            print(f"ℹ️  只保留 category={category_filter} 的问题，过滤掉 {filtered_count} 个其他category的问题")
+        if len(filtered_qa_pairs) == 0:
+            print(f"⚠️  警告: 没有找到 category={category_filter} 的问题")
+            return None
+    
     # 确定要测试的问题
     if question_idx is not None:
         if question_idx >= len(filtered_qa_pairs):
-            print(f"❌ 错误: 问题索引 {question_idx} 超出范围（共 {len(filtered_qa_pairs)} 个问题，已过滤category=5）")
+            filter_msg = f"（已过滤category=5" + (f", 只保留category={category_filter}" if category_filter is not None else "") + "）"
+            print(f"❌ 错误: 问题索引 {question_idx} 超出范围（共 {len(filtered_qa_pairs)} 个问题{filter_msg}）")
             return None
         test_questions = [filtered_qa_pairs[question_idx]]
     else:
         test_questions = filtered_qa_pairs
+        # 如果指定了max_questions，只测试前N个问题
+        if max_questions is not None and max_questions > 0:
+            test_questions = test_questions[:max_questions]
+            print(f"ℹ️  限制测试前 {max_questions} 个问题（共 {len(filtered_qa_pairs)} 个可用问题）")
     
     # 确定namespace（与构建记忆时保持一致）
     if namespace is None:
-        namespace = f"locomo_conv_{conversation_idx}"
+        namespace = generate_namespace_from_filepath(dataset_path, conversation_idx)
     
     print(f"\n📊 QA测试配置:")
     print(f"  - Conversation索引: {conversation_idx}")
@@ -526,7 +642,12 @@ def test_qa(
     llm_provider = config.llm_provider
     
     # 创建支持token追踪的LLMClient
-    tracking_llm_client = TokenTrackingLLMClient(config, token_tracker, default_provider=llm_provider)
+    tracking_llm_client = TokenTrackingLLMClient(
+        config, 
+        token_tracker, 
+        default_provider=llm_provider,
+        debug_print_prompt=debug_print_prompt
+    )
     
     # 手动创建QA系统（模仿create_qa_system的逻辑）
     from core.search.qa_system import QASystem
@@ -558,7 +679,7 @@ def test_qa(
         storage=None,  # QA系统可能不需要storage（使用Neo4j）
         llm_client=tracking_llm_client,
         namespace=namespace,
-        max_hops=2,
+        max_hops=max_hops,  # 使用传入的max_hops参数
         use_hybrid_search=use_hybrid_search,
         neo4j_client=neo4j_client,
         default_provider=llm_provider
@@ -607,7 +728,7 @@ def test_qa(
             elapsed = result.get('elapsed_time', 0)
             total_qa_time += elapsed
             
-            print(f"[{completed}/{len(test_questions)}] 问题 {i}: {question[:60]}... (耗时: {elapsed:.2f}s)")
+            print(f"[{completed}/{len(test_questions)}] 问题 {i}: {question[:60]}... (响应时间: {elapsed:.2f}s)")
             
             if result.get('evaluation'):
                 label = result['evaluation'].get("label", "WRONG")
@@ -624,10 +745,10 @@ def test_qa(
     print(f"📊 总体统计")
     print(f"{'='*70}")
     print(f"  - 测试问题数: {len(test_questions)}")
-    print(f"  - 总CPU时间: {total_qa_time:.2f} 秒")
+    print(f"  - 总响应时间（不包括评估）: {total_qa_time:.2f} 秒")
     print(f"  - 总墙钟时间: {total_wall_time:.2f} 秒")
     if len(test_questions) > 0:
-        print(f"  - 平均CPU时间: {total_qa_time/len(test_questions):.2f} 秒/问题")
+        print(f"  - 平均响应时间（不包括评估）: {total_qa_time/len(test_questions):.2f} 秒/问题")
         print(f"  - 平均墙钟时间: {total_wall_time/len(test_questions):.2f} 秒/问题")
         print(f"  - 加速比: {total_qa_time/total_wall_time:.2f}x")
     
@@ -639,6 +760,7 @@ def test_qa(
         accuracy = correct_count / total_evaluated if total_evaluated > 0 else 0.0
         
         print(f"\n📊 LLM Judge评估统计（总体）:")
+        print(f"  - 最大扩散跳数: {max_hops}")
         print(f"  - 评估问题数: {total_evaluated}")
         print(f"  - 正确答案数: {correct_count}")
         print(f"  - 准确率: {accuracy:.4f} ({correct_count}/{total_evaluated})")
@@ -708,6 +830,7 @@ def test_qa(
         'conversation_idx': conversation_idx,
         'namespace': namespace,
         'model': model or config.llm_model,
+        'max_hops': max_hops,  # 保存max_hops信息
         'total_questions': len(test_questions),
         'total_time': total_qa_time,
         'total_wall_time': total_wall_time,
@@ -721,17 +844,20 @@ def test_qa(
         }
     }
     
-    # 保存结果到JSON文件
-    output_dir = os.path.join(project_root, "experiment", "results")
-    os.makedirs(output_dir, exist_ok=True)
-    output_file = os.path.join(output_dir, f"qa_evaluation_conv_{conversation_idx}_{int(time.time())}.json")
-    
-    try:
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(result_data, f, ensure_ascii=False, indent=2)
-        print(f"\n💾 评估结果已保存到: {output_file}")
-    except Exception as e:
-        print(f"⚠️  保存结果失败: {e}")
+    # 保存结果到JSON文件（文件名包含max_hops）
+    if save_results:
+        output_dir = os.path.join(project_root, "experiment", "results")
+        os.makedirs(output_dir, exist_ok=True)
+        output_file = os.path.join(output_dir, f"qa_evaluation_conv_{conversation_idx}_hops{max_hops}_{int(time.time())}.json")
+        
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(result_data, f, ensure_ascii=False, indent=2)
+            print(f"\n💾 评估结果已保存到: {output_file}")
+        except Exception as e:
+            print(f"⚠️  保存结果失败: {e}")
+    else:
+        print(f"\nℹ️  跳过保存结果文件（--no-save 选项）")
     
     return result_data
 
@@ -747,6 +873,21 @@ def main():
   
   # 测试指定问题，使用指定模型
   python test_qa.py 1 --question-idx 0 --model gpt-4o-mini
+  
+  # 测试单个问题，不保存结果文件
+  python test_qa.py 0 --question-idx 0 --no-save
+  
+  # 只测试category=2的问题
+  python test_qa.py 0 --category 2
+  
+  # 测试所有conversation的category=2问题
+  python test_qa.py --all-conversations --category 2
+  
+  # 调试模式：打印所有LLM调用的完整prompt
+  python test_qa.py 0 --question-idx 0 --debug-prompt --no-save
+  
+  # 测试前10个问题，显示真实响应时间（不包括评估）
+  python test_qa.py 0 --max-questions 10 --no-save
   
   # 测试所有conversation的QA
   python test_qa.py --all-conversations --model gpt-4o-mini
@@ -801,14 +942,47 @@ def main():
     parser.add_argument(
         "--parallel", "-p",
         type=int,
-        default=50,
-        help="并行处理数量（默认: 50）"
+        default=1,
+        help="并行处理数量（默认: 1，注意：FAISS索引不是线程安全的，建议使用1）"
     )
     
     parser.add_argument(
         "--all-conversations", "-a",
         action="store_true",
         help="测试所有conversation的QA（如果指定此选项，不需要指定conversation_idx）"
+    )
+    
+    parser.add_argument(
+        "--max-hops",
+        type=int,
+        default=2,
+        help="最大扩散跳数（默认: 2）"
+    )
+    
+    parser.add_argument(
+        "--no-save",
+        action="store_true",
+        help="不保存结果文件（默认: 保存）"
+    )
+    
+    parser.add_argument(
+        "--category", "-c",
+        type=int,
+        default=None,
+        help="只测试指定category的问题（例如: --category 2 只测试category=2的问题）"
+    )
+    
+    parser.add_argument(
+        "--debug-prompt",
+        action="store_true",
+        help="打印所有LLM调用的完整prompt（用于调试）"
+    )
+    
+    parser.add_argument(
+        "--max-questions",
+        type=int,
+        default=None,
+        help="限制测试的问题数量（例如: --max-questions 10 只测试前10个问题）"
     )
     
     args = parser.parse_args()
@@ -827,7 +1001,12 @@ def main():
         model=args.model,
         namespace=args.namespace,
         parallel=args.parallel,
-        all_conversations=args.all_conversations
+        all_conversations=args.all_conversations,
+        max_hops=args.max_hops,
+        save_results=not args.no_save,  # 如果指定了--no-save，则不保存
+        category_filter=args.category,  # 传递category过滤参数
+        debug_print_prompt=args.debug_prompt,  # 传递调试参数
+        max_questions=args.max_questions  # 传递问题数量限制
     )
 
 

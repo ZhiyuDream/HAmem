@@ -37,15 +37,14 @@ def build_layer2_extraction_prompt(fragment_text, session_time, layer1_entities,
         existing_nodes_section = f"""
 # Existing Layer2 Nodes (recalled from previous fragments):
 {chr(10).join(existing_nodes_list)}
-
-IMPORTANT: When extracting timeline information, you should:
-1. If a new event/state/context is mentioned that should be linked to existing nodes, use "link_to_existing" to establish connections
-2. Only use "create_new" for completely new timeline information
-3. Events/States/Contexts do NOT support "update_existing" - always create new nodes
 """
     
-    return f"""
-Extract timeline information (events, states, contexts) from the conversation fragment.
+    return f"""Extract timeline information (events, states, contexts) from the conversation fragment.
+
+IMPORTANT COMPLETENESS REQUIREMENT:
+You must extract ALL timeline-relevant information explicitly mentioned in the fragment.
+Do NOT omit events simply because they seem minor, casual, emotional, or low-importance.
+If an explicit action occurred, it MUST be extracted as an EVENT.
 
 Fragment: {fragment_text}
 Session time: {session_time}
@@ -53,11 +52,34 @@ Session time: {session_time}
 Available entities for reference:
 {entities_str}
 {existing_nodes_section}
+IMPORTANT extraction rules:
+1. If a new event/state/context should be related to existing nodes, use "link_to_existing".
+2. Only use "create_new" for new timeline information.
+3. Events/States/Contexts do NOT support "update_existing" — always create new nodes.
+4. Do NOT summarize multiple distinct actions into one event if they happened separately.
+5. Casual or one-time actions (e.g., purchases, gifts, remarks about buying something)
+   are valid EVENTS and must be extracted.
 
-Classify each piece of information as:
-- EVENT: Dynamic activities, plans, temporary states
-- STATE: Ongoing situations, conditions
-- CONTEXT: Environmental/background information
+Classification guidelines:
+
+EVENT:
+- Any explicit action, occurrence, or completed activity mentioned in the text.
+- Includes but is not limited to:
+  • purchases or gifts (e.g., "bought a figurine")
+  • celebrations, interviews, meetings
+  • plans that were carried out
+  • one-time or casual actions with a time reference
+- If the question "Did something happen?" can be answered with yes → EVENT.
+
+STATE:
+- Ongoing emotions, motivations, beliefs, or conditions.
+- Typically persistent rather than momentary.
+- If the question "Is this an ongoing condition?" is yes → STATE.
+
+CONTEXT:
+- Background, framing, or situational information that explains
+  why events or states matter.
+- Often abstract or thematic rather than action-based.
 
 Output JSON format:
 {{
@@ -110,9 +132,8 @@ Output JSON format:
     ]
 }}
 
-# Action Types:
-- "create_new": Create a new event/state/context node
-- "link_to_existing": For new nodes that should be linked to existing nodes (specify existing node IDs in the list)
-- Note: Events/States/Contexts do NOT support "update_existing" - always create new nodes
+FINAL CHECK BEFORE OUTPUT:
+- Re-scan the fragment and confirm that every explicit action
+  (including purchases or casual activities) has been extracted as an EVENT.
 """
 

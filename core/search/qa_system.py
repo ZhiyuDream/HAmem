@@ -13,6 +13,70 @@ from .router import QuestionRouter
 from .answer import AnswerGenerator
 
 
+def select_modules_by_rules(question: str) -> List[str]:
+    """
+    基于规则快速选择相关模块（无需LLM调用）
+    
+    Args:
+        question: 问题文本
+    
+    Returns:
+        List[str]: 选中的模块列表（最多3个）
+    """
+    question_lower = question.lower()
+    modules = []
+    
+    # 时间相关
+    time_keywords = ['when', 'what time', 'how long', 'since when', 'date', 'year', 'month', 
+                     'day', 'which day', 'which date', 'how long ago', 'how many days', 
+                     'how many years', 'how many months', 'start', 'begin', 'end', 'finish',
+                     'occur', 'happen', 'took place', 'yesterday', 'last week', 'last month', 
+                     'last year', 'ago', 'since']
+    if any(kw in question_lower for kw in time_keywords):
+        modules.append('time_handling')
+    
+    # 状态相关
+    state_keywords = ['currently', 'now', 'recent status', 'is doing', 'was doing', 
+                      'current', 'recent', 'status', 'relationship status', 'living', 
+                      'working', 'studying']
+    if any(kw in question_lower for kw in state_keywords):
+        modules.append('state_analysis')
+    
+    # 情感/观点相关
+    opinion_keywords = ['feel', 'think', 'like', 'dislike', 'opinion', 'emotion', 
+                        'feeling', 'attitude', 'preference', 'sentiment', 'reaction']
+    if any(kw in question_lower for kw in opinion_keywords):
+        modules.append('opinion_sentiment')
+    
+    # 预测/推理相关
+    inference_keywords = ['will', 'would', 'might', 'predict', 'future', 'likely', 
+                          'probably', 'probably', 'chance', 'possibility']
+    if any(kw in question_lower for kw in inference_keywords):
+        modules.append('inference_prediction')
+    
+    # 细节提取（大多数问题都需要）
+    detail_keywords = ['what did', 'how did', 'explain', 'describe', 'what', 'how', 
+                       'why', 'which', 'detail', 'specific']
+    if any(kw in question_lower for kw in detail_keywords):
+        modules.append('detail_extraction')
+    
+    # 事实查询（简单短问题）
+    if len(question.split()) <= 5 and not modules:
+        modules.append('factual_lookup')
+    
+    # 如果没有匹配到，默认使用time_handling
+    if not modules:
+        modules = ['time_handling']
+    
+    # 去重并限制最多3个模块
+    unique_modules = []
+    for m in modules:
+        if m not in unique_modules:
+            unique_modules.append(m)
+    
+    return unique_modules[:3]
+
+
 class QASystem:
     """
     End-to-end QA pipeline:
@@ -68,10 +132,172 @@ class QASystem:
         self.router = QuestionRouter(llm_client, default_provider=default_provider)
         self.answer_generator = AnswerGenerator(llm_client, default_provider=default_provider)
     
+    def _graph_expand_from_seeds(
+        self,
+        seed_node_ids: List[str],
+        max_hops: int
+    ) -> List[Dict[str, Any]]:
+        """
+        从种子节点开始进行图扩散（纯图遍历）
+        
+        Args:
+            seed_node_ids: 种子节点ID列表
+            max_hops: 最大扩散跳数
+        
+        Returns:
+            List[Dict]: 所有扩散得到的节点（包括种子节点和所有跳的邻居节点）
+        """
+        if not seed_node_ids:
+            return []
+        
+        print(f"  🔗 从 {len(seed_node_ids)} 个种子节点开始图扩散 (max_hops={max_hops})...")
+        print(f"  📋 种子节点IDs: {seed_node_ids}")
+        
+        # 使用Neo4j进行图扩散
+        if self.use_hybrid_search and hasattr(self.recall, 'hybrid_search'):
+            # 过滤掉fragment节点（layer=0），不允许从fragment开始扩展
+            filtered_seed_ids = []
+            for seed_id in seed_node_ids:
+                node = self.cache.cache['nodes'].get(seed_id)
+                if node and node.get('layer', -1) != 0:  # 排除layer=0的节点
+                    filtered_seed_ids.append(seed_id)
+                elif node:
+                    print(f"  ⚠️  跳过fragment节点作为扩展起点: {seed_id}")
+            
+            if not filtered_seed_ids:
+                print(f"  ⚠️  所有种子节点都是fragment，无法扩展")
+                return []
+            
+            print(f"  🔗 从 {len(filtered_seed_ids)} 个非fragment节点开始扩展（已过滤 {len(seed_node_ids) - len(filtered_seed_ids)} 个fragment节点）")
+            
+            # 使用Neo4j的expand_from_nodes方法
+            expanded_nodes = self.recall.hybrid_search.vector_search.expand_from_nodes(
+                node_ids=filtered_seed_ids,
+                max_hops=max_hops,
+                limit=100  # 限制节点数量
+            )
+            
+            # 统计每跳的节点数（expand_from_nodes返回的节点包含hops信息）
+            hop_counts = {}
+            seed_nodes_count = 0
+            expanded_nodes_count = 0
+            
+            for node in expanded_nodes:
+                hops = node.get('hops', 0)
+                is_initial = node.get('is_initial', False)
+                
+                if is_initial or hops == 0:
+                    seed_nodes_count += 1
+                else:
+                    expanded_nodes_count += 1
+                
+                if hops not in hop_counts:
+                    hop_counts[hops] = 0
+                hop_counts[hops] += 1
+            
+            print(f"  ✅ 图扩散完成，获得 {len(expanded_nodes)} 个节点")
+            print(f"  📊 统计: 种子节点 {seed_nodes_count} 个, 扩展节点 {expanded_nodes_count} 个")
+            if hop_counts:
+                print(f"  📊 按跳数统计: {dict(sorted(hop_counts.items()))}")
+                # 验证max_hops是否正确应用
+                max_hop_found = max(hop_counts.keys()) if hop_counts else 0
+                if max_hop_found > max_hops:
+                    print(f"  ⚠️  警告: 发现跳数 {max_hop_found} > max_hops {max_hops}，可能有问题！")
+                else:
+                    print(f"  ✅ 最大跳数验证: {max_hop_found} <= {max_hops}")
+            
+            return expanded_nodes
+        else:
+            # 降级：使用原有的expansion方法（不支持多跳，只能1跳）
+            print(f"  ⚠️  未使用混合检索，降级到单跳扩展")
+            all_expanded_nodes = []
+            all_expanded_edges = []
+            max_total_nodes = 100  # 总节点数限制
+            
+            # 逐跳扩展
+            current_seeds = seed_node_ids
+            for hop in range(max_hops):
+                # 过滤掉 layer=0 (fragment) 的种子节点，不允许从fragment开始扩展
+                # 但允许扩展到fragment节点
+                filtered_seeds = []
+                for seed_id in current_seeds:
+                    node = self.cache.cache['nodes'].get(seed_id)
+                    if node and node.get('layer', -1) != 0:  # 排除layer=0的节点
+                        filtered_seeds.append(seed_id)
+                    elif node:
+                        print(f"  ⚠️  跳过fragment节点作为扩展起点: {seed_id}")
+                
+                if not filtered_seeds:
+                    print(f"  ⚠️  第{hop+1}跳：所有种子节点都是fragment，停止扩展")
+                    break
+                
+                print(f"  🔗 第{hop+1}跳：从 {len(filtered_seeds)} 个非fragment节点开始扩展（已过滤 {len(current_seeds) - len(filtered_seeds)} 个fragment节点）")
+                
+                expanded_nodes, expanded_edges = self.expansion.expand_nodes(
+                    filtered_seeds,
+                    max_neighbors=10  # 从50改为10
+                )
+                
+                if not expanded_nodes:
+                    break
+                
+                # 获取新节点（去重）
+                existing_ids = {n['id'] for n in all_expanded_nodes}
+                new_nodes = [n for n in expanded_nodes if n['id'] not in existing_ids]
+                
+                # 检查总节点数限制
+                if len(all_expanded_nodes) + len(new_nodes) > max_total_nodes:
+                    remaining = max_total_nodes - len(all_expanded_nodes)
+                    if remaining > 0:
+                        new_nodes = new_nodes[:remaining]
+                        print(f"  ⚠️  达到总节点数限制({max_total_nodes})，截断到 {len(all_expanded_nodes) + len(new_nodes)} 个节点")
+                    else:
+                        print(f"  ⚠️  已达到总节点数限制({max_total_nodes})，停止扩展")
+                        break
+                
+                all_expanded_nodes.extend(new_nodes)
+                all_expanded_edges.extend(expanded_edges)
+                
+                # 下一跳的种子是当前跳的所有新节点（但会过滤掉fragment）
+                current_seeds = [n['id'] for n in new_nodes]
+                
+                if not current_seeds:
+                    break
+                
+                # 如果已达到总节点数限制，停止扩展
+                if len(all_expanded_nodes) >= max_total_nodes:
+                    print(f"  ⚠️  已达到总节点数限制({max_total_nodes})，停止扩展")
+                    break
+            
+            print(f"  ✅ 图扩散完成，获得 {len(all_expanded_nodes)} 个节点（限制: {max_total_nodes}）")
+            return all_expanded_nodes
+    
+    def _is_answer_sufficient(self, answer: str) -> bool:
+        """
+        判断答案是否足够
+        
+        Args:
+            answer: 生成的答案
+        
+        Returns:
+            bool: True表示答案足够，False表示信息不足
+        """
+        answer_lower = answer.lower()
+        is_insufficient = (
+            'insufficient information' in answer_lower or
+            '信息不足' in answer_lower or
+            len(answer.strip()) < 10  # 答案太短也可能表示信息不足
+        )
+        return not is_insufficient
+    
     def answer_question(self, question: str) -> Dict[str, Any]:
         """
-        Answer a question via full pipeline.
-        Flow: Recall → Decide → Try answer → (Return or Expand) → Loop
+        Answer a question via new pipeline.
+        Flow: 
+        1. Initial recall (embedding similarity)
+        2. Try answer
+        3. If insufficient, LLM selects seed nodes → graph expansion (max_hops) → try answer again
+        4. Max 2 iterations
         """
         print(f"\n{'='*60}")
         print(f"❓ Question: {question}")
@@ -81,17 +307,16 @@ class QASystem:
             'llm_calls': 0,
             'recalled_nodes': 0,
             'expanded_nodes': 0,
-            'hops': 0
+            'hops': 0,
+            'iterations': 0
         }
         
-        # Stage 1: Initial recall
-        print(f"\n📍 Stage 1: Initial recall")
+        # Stage 1: Initial recall (embedding similarity)
+        print(f"\n📍 Stage 1: Initial recall (embedding similarity)")
         
         # 检查 cache 是否为空
         if self.cache.faiss_index is None or self.cache.faiss_index.ntotal == 0:
             print(f"⚠️  警告: FAISS索引为空 (namespace: {self.namespace})")
-            print(f"   💡 提示: 请确保已使用正确的 namespace 调用 build_memory()")
-            print(f"   💡 如果数据在其他 namespace，请在调用 ask_question() 时指定正确的 namespace 参数")
             return {
                 'question': question,
                 'answer': '抱歉，无法找到相关记忆。请检查是否使用了正确的 namespace，或先调用 build_memory() 构建记忆。',
@@ -99,32 +324,33 @@ class QASystem:
                 'stats': stats
             }
         
+        # 初始召回（向量相似度，不进行图扩展）
         if self.use_hybrid_search and hasattr(self.recall, 'multi_layer_recall_with_expansion'):
-            # 使用混合检索（FAISS + Neo4j 图扩展）
-            print(f"  🔍 使用混合检索模式（FAISS + Neo4j）")
+            # 使用混合检索，但初始召回时不扩展（max_hops=0）
+            # 方案1：减少初始召回数量（从37个减少到约19个）
             recalled = self.recall.multi_layer_recall_with_expansion(
                 question,
-                layer0_top_k=2,  # Fragment召回top2
-                layer1_top_k=10,
-                layer2_top_k=20,
-                layer3_top_k=5,
-                max_hops=1,  # 初始召回时只扩展1跳
-                expand_limit=30
+                layer0_top_k=1,   # 2 → 1
+                layer1_top_k=3,   # 10 → 5
+                layer2_top_k=3,  # 20 → 10
+                layer3_top_k=3,   # 5 → 3
+                max_hops=0,  # 初始召回不扩展
+                expand_limit=0
             )
-            # 提取初始节点和扩展节点（包括Layer0）
             current_nodes = []
             for layer_key in ['layer0', 'layer1', 'layer2', 'layer3']:
                 if layer_key in recalled:
                     layer_data = recalled[layer_key]
                     current_nodes.extend(layer_data.get('all_nodes', []))
         else:
-            # 使用原有检索（包括Layer0）
+            # 使用原有检索
+            # 方案1：减少初始召回数量（从37个减少到约19个）
             recalled = self.recall.multi_layer_recall(
                 question,
-                layer0_top_k=2,  # Fragment召回top2
-                layer1_top_k=10,
-                layer2_top_k=20,
-                layer3_top_k=5
+                layer0_top_k=1,   # 2 → 1
+                layer1_top_k=3,   # 10 → 5
+                layer2_top_k=3,  # 20 → 10
+                layer3_top_k=3   # 5 → 3
             )
             current_nodes = (
                 recalled.get('layer0', []) + 
@@ -134,97 +360,154 @@ class QASystem:
             )
         
         stats['recalled_nodes'] = len(current_nodes)
+        print(f"  ✅ 初始召回: {len(current_nodes)} 个节点")
         
-        # Show recalled node IDs (完整列表)
-        print(f"\n📋 Recalled node IDs:")
-        if self.use_hybrid_search and hasattr(self.recall, 'multi_layer_recall_with_expansion'):
-            # 混合检索格式（包括Layer0）
-            for layer_key in ['layer0', 'layer1', 'layer2', 'layer3']:
-                if layer_key in recalled:
-                    layer_data = recalled[layer_key]
-                    layer_nodes = layer_data.get('all_nodes', [])
-                    layer_name = layer_key.upper()
-                    node_ids = [n.get('id', 'unknown') for n in layer_nodes]
-                    print(f"  {layer_name}: {node_ids} (共 {len(node_ids)} 个)")
-        else:
-            # 原有检索格式（需要添加Layer0）
-            layer0_ids = [n['id'] for n in recalled.get('layer0', [])]
-            layer1_ids = [n['id'] for n in recalled.get('layer1', [])]
-            layer2_ids = [n['id'] for n in recalled.get('layer2', [])]
-            layer3_ids = [n['id'] for n in recalled.get('layer3', [])]
-            if layer0_ids:
-                print(f"  Layer0: {layer0_ids} (共 {len(layer0_ids)} 个)")
-            print(f"  Layer1: {layer1_ids} (共 {len(layer1_ids)} 个)")
-            print(f"  Layer2: {layer2_ids} (共 {len(layer2_ids)} 个)")
-            print(f"  Layer3: {layer3_ids} (共 {len(layer3_ids)} 个)")
+        # 显示召回的节点
+        node_ids = [n.get('id', 'unknown') for n in current_nodes]
+        print(f"  📋 节点IDs: {node_ids[:10]}... (共 {len(node_ids)} 个)")
         
-        all_edges = []
-        all_fragments = []
+        # 获取fragments
+        all_fragments = self.recall.get_fragments_by_nodes(node_ids)
         
-        # Stage 2: Direct answer generation (no separate decision step)
-        print(f"\n📍 Stage 2: Direct Answer Generation")
+        # 构建context
+        context = {
+            'layer1': [n for n in current_nodes if n.get('layer') == 1],
+            'layer2': [n for n in current_nodes if n.get('layer') == 2],
+            'layer3': [n for n in current_nodes if n.get('layer') == 3],
+            'edges': [],
+            'fragments': all_fragments
+        }
         
-        for hop in range(self.max_hops):
-            print(f"\n🔄 Hop {hop + 1}/{self.max_hops}")
+        # 尝试生成答案（基于规则快速选择模块）
+        selected_modules = select_modules_by_rules(question)
+        print(f"  🎯 基于规则选择的模块: {selected_modules}")
+        answer_result = self.answer_generator.try_answer(
+            question, 
+            context, 
+            selected_modules=selected_modules
+        )
+        stats['llm_calls'] += 1
+        stats['iterations'] += 1
+        
+        answer = answer_result.get('answer', '')
+        reason = answer_result.get('reason', '')
+        seed_node_ids = answer_result.get('seed_node_ids', [])  # 从答案结果中获取选中的节点
+        
+        # 判断答案是否足够
+        if self._is_answer_sufficient(answer):
+            print(f"  ✅ 答案足够，直接返回")
+            print(f"\n{'='*60}")
+            print(f"✅ QA completed (iteration {stats['iterations']})")
+            print(f"📊 Stats: {stats['llm_calls']} LLM calls, "
+                  f"{stats['recalled_nodes']} recalled, "
+                  f"{stats['expanded_nodes']} expanded, "
+                  f"{stats['hops']} hops, "
+                  f"{stats['iterations']} iterations")
+            print(f"{'='*60}")
             
-            # 2.1: Find candidates for potential expansion
-            candidates, connecting_edges = self.expansion.find_candidates(
-                current_node_ids=[n['id'] for n in current_nodes],
-                max_candidates=50
-            )
+            return {
+                'question': question,
+                'answer': answer,
+                'reason': reason,
+                'prompt_used': answer_result.get('prompt_used', ''),
+                'stats': stats
+            }
+        
+        # 答案不足，进入扩展循环（最多2次迭代）
+        print(f"  ⚠️  答案不足，进入扩展循环 (最多2次迭代)")
+        
+        max_iterations = 2
+        for iteration in range(max_iterations):
+            print(f"\n🔄 扩展迭代 {iteration + 1}/{max_iterations}")
             
-            print(f"  📊 Nodes used: {len(current_nodes)} (no filtering)")
-            print(f"  📊 Candidates available: {len(candidates)}")
+            # Step 1: 使用上次答案生成时LLM选中的种子节点
+            # 验证节点ID是否存在于当前节点中，并过滤掉fragment节点（layer=0）
+            valid_node_ids = {n.get('id') for n in current_nodes}
+            seed_node_ids = [nid for nid in seed_node_ids if nid in valid_node_ids]
             
-            # 2.2: Try to answer directly (LLM will automatically select appropriate modules)
-            print(f"  🚀 Attempting to generate answer directly...")
+            # 过滤掉fragment节点（layer=0），不允许从fragment开始扩展
+            filtered_seed_ids = []
+            for nid in seed_node_ids:
+                node = next((n for n in current_nodes if n.get('id') == nid), None)
+                if node and node.get('layer', -1) != 0:  # 排除layer=0的节点
+                    filtered_seed_ids.append(nid)
+                elif node:
+                    print(f"  ⚠️  过滤掉fragment节点作为种子: {nid}")
             
-            # Get fragments
-            all_fragments = self.recall.get_fragments_by_nodes(
-                [n['id'] for n in current_nodes]
-            )
+            seed_node_ids = filtered_seed_ids
             
-            # Build context
+            # 如果LLM没有返回有效的节点，选择前3个非fragment节点作为默认值
+            if not seed_node_ids:
+                print(f"  ⚠️  LLM未返回有效节点，从前3个非fragment节点中选择种子")
+                for node in current_nodes:
+                    if node.get('layer', -1) != 0:  # 排除fragment
+                        seed_node_ids.append(node.get('id'))
+                        if len(seed_node_ids) >= 3:
+                            break
+            
+            if not seed_node_ids:
+                print(f"  ⚠️  未选中种子节点，停止扩展")
+                break
+            
+            print(f"  🎯 使用种子节点: {seed_node_ids[:5]}")
+            
+            # Step 2: 从种子节点开始图扩散（按max_hops）
+            expanded_nodes = self._graph_expand_from_seeds(seed_node_ids, self.max_hops)
+            
+            if not expanded_nodes:
+                print(f"  ⚠️  图扩散未获得新节点，停止扩展")
+                break
+            
+            # Step 3: 合并节点（去重）
+            existing_node_ids = {n.get('id') for n in current_nodes}
+            new_nodes = [n for n in expanded_nodes if n.get('id') not in existing_node_ids]
+            
+            if not new_nodes:
+                print(f"  ⚠️  未获得新节点，停止扩展")
+                break
+            
+            current_nodes.extend(new_nodes)
+            stats['expanded_nodes'] += len(new_nodes)
+            stats['hops'] = self.max_hops
+            
+            print(f"  ✅ 扩展完成，新增 {len(new_nodes)} 个节点")
+            
+            # Step 4: 更新fragments和context
+            all_node_ids = [n.get('id') for n in current_nodes]
+            all_fragments = self.recall.get_fragments_by_nodes(all_node_ids)
+            
             context = {
                 'layer1': [n for n in current_nodes if n.get('layer') == 1],
                 'layer2': [n for n in current_nodes if n.get('layer') == 2],
                 'layer3': [n for n in current_nodes if n.get('layer') == 3],
-                'edges': all_edges + connecting_edges,
+                'edges': [],
                 'fragments': all_fragments
             }
-                
-            # Try to answer directly (LLM will automatically select appropriate modules)
-            # Pass all modules so LLM can choose which ones to apply
-            all_modules = ['time_handling', 'state_analysis', 'opinion_sentiment', 
-                          'inference_prediction', 'detail_extraction', 'factual_lookup']
+            
+            # Step 5: 再次尝试生成答案（基于规则快速选择模块）
+            selected_modules = select_modules_by_rules(question)
             answer_result = self.answer_generator.try_answer(
                 question, 
                 context, 
-                selected_modules=all_modules  # 让LLM自动选择和应用
+                selected_modules=selected_modules
             )
             stats['llm_calls'] += 1
+            stats['iterations'] += 1
             
             answer = answer_result.get('answer', '')
             reason = answer_result.get('reason', '')
+            seed_node_ids = answer_result.get('seed_node_ids', [])  # 更新种子节点（用于下次迭代）
             
-            # Check if answer is sufficient (not "Insufficient information")
-            is_insufficient = (
-                'insufficient information' in answer.lower() or
-                '信息不足' in answer.lower() or
-                len(answer.strip()) < 10  # 答案太短也可能表示信息不足
-            )
-            
-            if not is_insufficient:
-                # Answer is sufficient, return it
-                print(f"  ✅ Answer generated successfully!")
-                stats['hops'] = hop + 1
-                
+            # 判断答案是否足够
+            if self._is_answer_sufficient(answer):
+                print(f"  ✅ 答案足够，返回结果")
                 print(f"\n{'='*60}")
-                print(f"✅ QA completed (hop {hop + 1})")
+                print(f"✅ QA completed (iteration {stats['iterations']})")
                 print(f"📊 Stats: {stats['llm_calls']} LLM calls, "
                       f"{stats['recalled_nodes']} recalled, "
                       f"{stats['expanded_nodes']} expanded, "
-                      f"{stats['hops']} hops")
+                      f"{stats['hops']} hops, "
+                      f"{stats['iterations']} iterations")
                 print(f"{'='*60}")
                 
                 return {
@@ -235,162 +518,22 @@ class QASystem:
                     'stats': stats
                 }
             else:
-                # Answer is insufficient, try to expand using Neo4j
-                print(f"  ⚠️  Answer insufficient (detected 'Insufficient information'), attempting Neo4j expansion...")
-                
-                # 2.3: Expand using Neo4j if available
-            if not candidates:
-                print(f"  ⚠️  No candidates to expand, stop")
-                break
-            
-                # TODO: 使用Neo4j进行扩展（方案讨论中，暂不实现）
-                # 扩展方案：
-                # 1. 使用当前召回节点的ID，通过Neo4j的图扩展查询获取相关节点
-                # 2. 使用expand_from_nodes方法，从当前节点扩展到1-2跳的邻居节点
-                # 3. 过滤掉Fragment节点（layer=0），只保留Layer1/Layer2/Layer3节点
-                # 4. 限制扩展节点数量（例如最多50个）
-                # 5. 扩展后重新生成答案
-                
-                # 临时：使用现有的expansion.expand_nodes作为占位
-                nodes_to_expand = [c['id'] for c in candidates[:10]]  # 限制扩展节点数量
-                print(f"  🔗 Expanding {len(nodes_to_expand)} nodes using Neo4j...")
-                
-                # 使用Neo4j扩展（如果可用）
-                if self.use_hybrid_search and hasattr(self.recall, 'hybrid_search'):
-                    # 使用Neo4j的expand_from_nodes方法
-                    # recall.hybrid_search 是 Neo4jHybridSearch 实例
-                    # recall.hybrid_search.vector_search 是 Neo4jVectorSearch 实例
-                    expanded_nodes_list = self.recall.hybrid_search.vector_search.expand_from_nodes(
-                        node_ids=nodes_to_expand,
-                        max_hops=2,  # 扩展2跳
-                        limit=50  # 最多50个节点
-                    )
-                    
-                    # 分离Layer1/Layer2/Layer3节点和Fragment节点（layer=0）
-                    old_node_ids = {n['id'] for n in current_nodes}
-                    
-                    # Layer1/Layer2/Layer3节点：过滤掉已存在的节点
-                    new_nodes = [
-                        n for n in expanded_nodes_list 
-                        if n.get('id') not in old_node_ids and n.get('layer') != 0
-                    ]
-                    
-                    # Fragment节点（layer=0）：单独处理，使用向量相似度召回top2
-                    fragment_nodes = [
-                        n for n in expanded_nodes_list 
-                        if n.get('layer') == 0 and n.get('id') not in old_node_ids
-                    ]
-                    
-                    # 对Fragment节点进行向量相似度搜索，取top2
-                    top_fragments = []
-                    if fragment_nodes and hasattr(self.recall, 'hybrid_search'):
-                        try:
-                            # 获取问题的embedding
-                            query_embedding = self.recall.hybrid_search._get_query_embedding(question)
-                            
-                            # 使用cache的filter_and_search对Fragment进行向量搜索
-                            fragment_candidates = self.recall.hybrid_search.cache.filter_and_search(
-                                query_embedding,
-                                filters={'layer': 0},  # 只搜索Fragment
-                                top_k=2  # 取top2
-                            )
-                            
-                            # 提取Fragment节点
-                            for candidate in fragment_candidates:
-                                frag_node = candidate.get('node', {})
-                                if frag_node and frag_node.get('id') not in old_node_ids:
-                                    top_fragments.append(frag_node)
-                            
-                            print(f"  📄 Recalled {len(top_fragments)} top Fragment nodes via vector similarity")
-                        except Exception as e:
-                            print(f"  ⚠️  Failed to recall Fragment nodes: {e}")
-                            # 如果向量搜索失败，使用扩展得到的Fragment节点（最多2个）
-                            top_fragments = fragment_nodes[:2]
-                    
-                    # 合并所有新节点
-                    all_new_nodes = new_nodes + top_fragments
-                    
-                    if all_new_nodes:
-                        current_nodes.extend(all_new_nodes)
-                        stats['expanded_nodes'] += len(all_new_nodes)
-                        stats['hops'] = hop + 1
-                        print(f"  ✅ Expanded {len(new_nodes)} nodes + {len(top_fragments)} fragments via Neo4j")
-                        if all_new_nodes:
-                            new_node_ids = [n['id'] for n in all_new_nodes]
-                            print(f"     Expanded node IDs: {new_node_ids[:10]}... (共 {len(new_node_ids)} 个)")
-                        # 继续下一轮循环，重新尝试生成答案
-                        continue
-                    else:
-                        print(f"  ⚠️  Neo4j expansion yielded no new nodes, stop")
-                        break
-                else:
-                    # 降级到原有的expansion方法
-                    expanded_nodes, expanded_edges = self.expansion.expand_nodes(
-                        nodes_to_expand,
-                        max_neighbors=20
-                    )
-                    
-                    if not expanded_nodes:
-                        print(f"  ⚠️  Expansion yielded no new nodes, stop")
-                        break
-                    
-                    # Update node set
-                    old_node_ids = {n['id'] for n in current_nodes}
-                    new_nodes = [n for n in expanded_nodes if n['id'] not in old_node_ids]
-                    
-                    current_nodes.extend(new_nodes)
-                    all_edges.extend(expanded_edges)
-                    stats['expanded_nodes'] += len(new_nodes)
-                    stats['hops'] = hop + 1
-                    
-                    print(f"  ✅ Expanded {len(new_nodes)} new nodes")
-                    if new_nodes:
-                        new_node_ids = [n['id'] for n in new_nodes]
-                        print(f"     Expanded node IDs: {new_node_ids} (共 {len(new_node_ids)} 个)")
-                        # 继续下一轮循环，重新尝试生成答案
-                        continue
-                    else:
-                        print(f"  ⚠️  No new nodes after expansion, stop")
-                        break
+                print(f"  ⚠️  答案仍不足，继续扩展...")
         
-        # Stage 3: Final answer generation
-        print(f"\n📍 Stage 3: Final answer generation")
-        
-        all_fragments = self.recall.get_fragments_by_nodes(
-            [n['id'] for n in current_nodes]
-        )
-        
-        context = {
-            'layer1': [n for n in current_nodes if n.get('layer') == 1],
-            'layer2': [n for n in current_nodes if n.get('layer') == 2],
-            'layer3': [n for n in current_nodes if n.get('layer') == 3],
-            'edges': all_edges,
-            'fragments': all_fragments
-        }
-        
-        # Final generation (with all modules available)
-        print(f"\n💬 Generating answer...")
-        
-        # 使用所有模块，让LLM自动选择和应用
-        all_modules = ['time_handling', 'state_analysis', 'opinion_sentiment', 
-                      'inference_prediction', 'detail_extraction', 'factual_lookup']
-        print(f"  🎯 Using all modules (LLM will auto-select): {all_modules}")
-        
-        answer_result = self.answer_generator.generate(question, context, selected_modules=all_modules)
-        stats['llm_calls'] += 1
-        
+        # 所有迭代完成，返回最终答案（即使不足）
         print(f"\n{'='*60}")
-        print(f"✅ QA completed (final generation)")
+        print(f"✅ QA completed (final, {stats['iterations']} iterations)")
         print(f"📊 Stats: {stats['llm_calls']} LLM calls, "
               f"{stats['recalled_nodes']} recalled, "
               f"{stats['expanded_nodes']} expanded, "
-              f"{stats['hops']} hops")
+              f"{stats['hops']} hops, "
+              f"{stats['iterations']} iterations")
         print(f"{'='*60}")
         
         return {
             'question': question,
-            'answer': answer_result['answer'],
-            'reason': answer_result['reason'],
+            'answer': answer,
+            'reason': reason,
             'prompt_used': answer_result.get('prompt_used', ''),
             'stats': stats
         }

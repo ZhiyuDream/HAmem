@@ -4,15 +4,6 @@ Do NOT use data about a different term that merely looks or sounds similar (for 
 Only use information that is directly and reliably related to the specified topic. 
 If such information is unavailable, respond with "Insufficient information" instead of forcing an answer.
 
-MODULE SELECTION (Apply automatically based on question type):
-- **time_handling**: For WHEN questions ("when did", "what time", "how long ago", "since when", dates/years/months)
-- **state_analysis**: For CURRENT STATUS questions ("currently doing", "now", "recent status", "what is X doing now")
-- **opinion_sentiment**: For FEELINGS/OPINIONS questions (emotions, preferences, attitudes)
-- **inference_prediction**: For PREDICTIONS/REASONING questions ("what will happen", "what might")
-- **detail_extraction**: For SPECIFIC DETAILS questions ("what did X do", "how did X do Y", step-by-step processes)
-- **factual_lookup**: For DIRECT FACTS questions (simple attribute lookups)
-
-Apply the most relevant module(s) automatically based on the question. You may combine multiple modules if needed.
 
 SPECIALIZED MODULE GUIDELINES:
 {specialized_modules}
@@ -33,6 +24,15 @@ CORE PRINCIPLES:
    - If context does not match the question, respond with "Insufficient information" or clarify what information is available vs. what was asked
 
 QUESTION: {query}
+
+TIME RESOLUTION PROCEDURE (MUST FOLLOW):
+
+Step 1: Identify the EVENT node that directly answers the question.
+Step 2: If that EVENT has a relative_time field:
+        - Compute the absolute time using conversation_time + relative_time.
+        - Do NOT use conversation_time directly as the answer.
+Step 3: Only if relative_time is missing, use conversation_time.
+Step 4: Output the final absolute time in natural human form.
 
 KNOWLEDGE GRAPH INFORMATION:
 {context}
@@ -59,16 +59,17 @@ INFORMATION PRIORITY:
 4. STATE nodes as supporting context
 5. CONTEXT nodes as background only
 
+IMPORTANT:
+- If your answer is "Insufficient information", you should still select 3-5 core node IDs from the provided context that are most relevant to the question. These nodes will be used for graph expansion to find more related information.
+- The "seed_node_ids" field should contain 3-5 node IDs from the KNOWLEDGE GRAPH INFORMATION above that you think are most relevant for answering the question.
+- Only include node IDs that exist in the provided context.
+
 RESPONSE FORMAT:
 {{
     "reason": "brief explanation of sources used",
-    "answer": "precise, direct answer"
+    "answer": "precise, direct answer",
+    "seed_node_ids": ["node_id_1", "node_id_2", ...]
 }}
-    
 
-ANSWER EXAMPLES:
-- Direct fact: "Becoming Nicole"
-- Time (natural): "8 May 2023" (not "1:56 pm on 8 May 2023")
-- Time (descriptive): "the week beofre 8 May 2023" 
-- Opinion: "positive" (not "Caroline feels positive about...")
-- Inference: "single" (not "He is likely single now because...")
+
+    

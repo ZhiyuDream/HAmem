@@ -1,7 +1,9 @@
 """
-并行运行locomo数据集的记忆构建和QA测试
+并行运行数据集的记忆构建和QA测试
 
-支持并行处理多个conversation（0-9），每个conversation使用独立的namespace，互不干扰。
+支持并行处理多个conversation，每个conversation使用独立的namespace（基于文件名+conversation编号），互不干扰。
+自动检测数据集中的所有对话数量，支持测试完整数据集。
+最后会汇总整个数据集的QA评估结果。
 """
 
 import sys
@@ -15,6 +17,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from io import StringIO
+from collections import defaultdict
 
 # 添加项目根目录到路径
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -113,6 +116,26 @@ class ThreadLocalStdout:
 _thread_stdout = ThreadLocalStdout()
 
 
+def generate_namespace_from_filepath(dataset_path: str, conversation_idx: int) -> str:
+    """
+    根据数据集文件路径和conversation索引生成namespace
+    
+    Args:
+        dataset_path: 数据集文件路径
+        conversation_idx: conversation索引
+    
+    Returns:
+        namespace字符串，格式：文件名_conv_索引
+    """
+    # 获取文件名（不含扩展名）
+    file_basename = os.path.basename(dataset_path)
+    file_name, _ = os.path.splitext(file_basename)
+    
+    # 生成namespace
+    namespace = f"{file_name}_conv_{conversation_idx}"
+    return namespace
+
+
 def run_single_conversation(
     conversation_idx: int,
     dataset_path: str,
@@ -138,7 +161,7 @@ def run_single_conversation(
     from experiment.test_qa import test_qa
     
     logger = setup_logging(log_dir, conversation_idx)
-    namespace = f"locomo_conv_{conversation_idx}"
+    namespace = generate_namespace_from_filepath(dataset_path, conversation_idx)
     
     # 为当前线程设置独立的stdout重定向
     _thread_stdout.set_logger(logger)
@@ -168,7 +191,8 @@ def run_single_conversation(
             conversation_idx=conversation_idx,
             dataset_path=dataset_path,
             model=model,
-            skip_storage=False
+            skip_storage=False,
+            namespace=namespace  # 传递正确的namespace
         )
         memory_end_time = time.time()
         memory_time = memory_end_time - memory_start_time
@@ -185,6 +209,11 @@ def run_single_conversation(
                 'token_stats': memory_result.get('token_stats', {})
             }
             logger.info(f"✅ 记忆构建完成，耗时: {memory_time:.2f}秒")
+            
+            # 等待一小段时间，确保文件系统同步（特别是FAISS索引的保存）
+            import time as time_module
+            time_module.sleep(1)
+            logger.info(f"⏳ 等待文件系统同步...")
         else:
             result['memory_building'] = {
                 'success': False,
@@ -205,7 +234,8 @@ def run_single_conversation(
                 question_idx=None,  # 测试所有问题
                 dataset_path=dataset_path,
                 model=model,
-                namespace=namespace
+                namespace=namespace,
+                max_hops=2  # 默认使用2跳
             )
             qa_end_time = time.time()
             qa_time = qa_end_time - qa_start_time
@@ -219,7 +249,8 @@ def run_single_conversation(
                     'time': qa_time,
                     'total_time': qa_result.get('total_time', 0),
                     'token_stats': qa_result.get('token_stats', {}),
-                    'results_count': len(qa_result.get('results', []))
+                    'results_count': len(qa_result.get('results', [])),
+                    'result': qa_result  # 保存完整的QA结果，用于后续汇总
                 }
                 logger.info(f"✅ QA测试完成，耗时: {qa_time:.2f}秒")
             else:
@@ -340,6 +371,13 @@ def run_parallel_experiment(
         total_memory_tokens = 0
         total_qa_tokens = 0
         
+        # 汇总QA结果
+        total_questions = 0
+        total_evaluated = 0
+        total_correct = 0
+        category_stats = defaultdict(lambda: {'total': 0, 'correct': 0})
+        all_qa_results = []  # 存储所有QA结果用于详细分析
+        
         for idx, result in results.items():
             if result.get('memory_building', {}).get('token_stats'):
                 for stats in result['memory_building']['token_stats'].values():
@@ -350,23 +388,131 @@ def run_parallel_experiment(
                 for stats in result['qa']['token_stats'].values():
                     if isinstance(stats, dict):
                         total_qa_tokens += stats.get('total_tokens', 0)
+            
+            # 收集QA评估结果
+            qa_result = result.get('qa', {})
+            if qa_result.get('success'):
+                # test_qa返回的result_data包含'result'字段，其中包含完整的QA结果
+                qa_data = qa_result.get('result', {})
+                if isinstance(qa_data, dict):
+                    # test_qa返回的result_data中，'results'字段包含所有QA结果
+                    qa_results_list = qa_data.get('results', [])
+                    for qa_item in qa_results_list:
+                        all_qa_results.append({
+                            'conversation_idx': idx,
+                            **qa_item
+                        })
+                        
+                        # 统计评估结果
+                        evaluation = qa_item.get('evaluation')
+                        if evaluation is not None:
+                            total_evaluated += 1
+                            score = evaluation.get('score', 0)
+                            if score == 1:
+                                total_correct += 1
+                            
+                            # 按category统计
+                            category = qa_item.get('category')
+                            if category is not None:
+                                category_stats[category]['total'] += 1
+                                if score == 1:
+                                    category_stats[category]['correct'] += 1
+                        
+                        total_questions += 1
         
         main_logger.info(f"\n📊 Token统计:")
         main_logger.info(f"  - 记忆构建总tokens: {total_memory_tokens:,}")
         main_logger.info(f"  - QA测试总tokens: {total_qa_tokens:,}")
         main_logger.info(f"  - 总计: {total_memory_tokens + total_qa_tokens:,}")
+        
+        # 汇总QA评估结果
+        if total_questions > 0:
+            main_logger.info(f"\n📊 QA评估汇总:")
+            main_logger.info(f"  - 总问题数: {total_questions}")
+            main_logger.info(f"  - 已评估问题数: {total_evaluated}")
+            if total_evaluated > 0:
+                overall_accuracy = total_correct / total_evaluated
+                main_logger.info(f"  - 正确答案数: {total_correct}")
+                main_logger.info(f"  - 总体准确率: {overall_accuracy:.4f} ({total_correct}/{total_evaluated})")
+                
+                # 按category统计
+                if category_stats:
+                    main_logger.info(f"\n📊 按Category统计:")
+                    main_logger.info(f"  {'Category':<10} {'正确数':<10} {'总数':<10} {'准确率':<10}")
+                    main_logger.info(f"  {'-'*40}")
+                    for category in sorted(category_stats.keys()):
+                        stats = category_stats[category]
+                        accuracy = stats['correct'] / stats['total'] if stats['total'] > 0 else 0.0
+                        main_logger.info(f"  {category:<10} {stats['correct']:<10} {stats['total']:<10} {accuracy:.4f}")
     
     main_logger.info(f"{'='*70}\n")
     
     # 保存汇总结果到JSON
     summary_file = os.path.join(log_dir, 'summary.json')
+    
+    # 准备汇总数据
     summary = {
         'timestamp': datetime.now().isoformat(),
         'total_time': total_time,
         'conversation_indices': conversation_indices,
         'model': model,
+        'dataset_path': dataset_path,
         'results': results
     }
+    
+    # 如果进行了QA测试，添加QA汇总信息
+    if not skip_qa:
+        qa_summary = {
+            'total_questions': 0,
+            'total_evaluated': 0,
+            'total_correct': 0,
+            'overall_accuracy': 0.0,
+            'category_stats': {}
+        }
+        
+        total_questions = 0
+        total_evaluated = 0
+        total_correct = 0
+        category_stats = defaultdict(lambda: {'total': 0, 'correct': 0})
+        all_qa_results = []
+        
+        for idx, result in results.items():
+            qa_result = result.get('qa', {})
+            if qa_result.get('success'):
+                # test_qa返回的result_data包含'result'字段，其中包含完整的QA结果
+                qa_data = qa_result.get('result', {})
+                if isinstance(qa_data, dict):
+                    # test_qa返回的result_data中，'results'字段包含所有QA结果
+                    qa_results_list = qa_data.get('results', [])
+                    for qa_item in qa_results_list:
+                        all_qa_results.append({
+                            'conversation_idx': idx,
+                            **qa_item
+                        })
+                        
+                        evaluation = qa_item.get('evaluation')
+                        if evaluation is not None:
+                            total_evaluated += 1
+                            score = evaluation.get('score', 0)
+                            if score == 1:
+                                total_correct += 1
+                            
+                            category = qa_item.get('category')
+                            if category is not None:
+                                category_stats[category]['total'] += 1
+                                if score == 1:
+                                    category_stats[category]['correct'] += 1
+                        
+                        total_questions += 1
+        
+        qa_summary['total_questions'] = total_questions
+        qa_summary['total_evaluated'] = total_evaluated
+        qa_summary['total_correct'] = total_correct
+        qa_summary['overall_accuracy'] = total_correct / total_evaluated if total_evaluated > 0 else 0.0
+        qa_summary['category_stats'] = {str(k): v for k, v in category_stats.items()}
+        qa_summary['all_qa_results'] = all_qa_results
+        
+        summary['qa_summary'] = qa_summary
     
     with open(summary_file, 'w', encoding='utf-8') as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
@@ -404,15 +550,15 @@ def main():
     parser.add_argument(
         "--start", "-s",
         type=int,
-        default=0,
-        help="起始conversation索引（默认: 0）"
+        default=None,
+        help="起始conversation索引（如果未指定，自动从数据集检测）"
     )
     
     parser.add_argument(
         "--end", "-e",
         type=int,
-        default=9,
-        help="结束conversation索引（默认: 9）"
+        default=None,
+        help="结束conversation索引（如果未指定，自动从数据集检测）"
     )
     
     parser.add_argument(
@@ -472,8 +618,40 @@ def main():
             "logs"
         )
     
+    # 加载数据集以获取对话数量
+    try:
+        with open(args.dataset, 'r', encoding='utf-8') as f:
+            dataset = json.load(f)
+        total_conversations = len(dataset)
+    except Exception as e:
+        sys.stderr.write(f"❌ 错误: 无法读取数据集文件: {e}\n")
+        sys.exit(1)
+    
+    # 确定conversation索引范围
+    if args.start is None:
+        args.start = 0
+    if args.end is None:
+        args.end = total_conversations - 1
+    
+    # 验证范围
+    if args.start < 0:
+        sys.stderr.write(f"❌ 错误: 起始索引不能小于0\n")
+        sys.exit(1)
+    if args.end >= total_conversations:
+        sys.stderr.write(f"⚠️  警告: 结束索引 {args.end} 超出数据集范围（共 {total_conversations} 个对话），将使用 {total_conversations - 1}\n")
+        args.end = total_conversations - 1
+    if args.start > args.end:
+        sys.stderr.write(f"❌ 错误: 起始索引 {args.start} 大于结束索引 {args.end}\n")
+        sys.exit(1)
+    
     # 生成conversation索引列表
     conversation_indices = list(range(args.start, args.end + 1))
+    
+    # 输出信息
+    sys.stdout.write(f"📊 数据集信息:\n")
+    sys.stdout.write(f"  - 文件路径: {args.dataset}\n")
+    sys.stdout.write(f"  - 总对话数: {total_conversations}\n")
+    sys.stdout.write(f"  - 将测试对话: {args.start} 到 {args.end} (共 {len(conversation_indices)} 个)\n")
     
     # 运行实验
     run_parallel_experiment(
