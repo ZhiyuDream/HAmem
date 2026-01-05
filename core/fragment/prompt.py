@@ -1,10 +1,9 @@
 def build_split_fragment_prompt(buffer, new_turn):
     """
-    Build fragment splitting prompt.
+    Build fragment splitting prompt (online system).
     buffer: List of existing dialogue turns, each as dict with speaker and text.
     new_turn: New dialogue turn dict.
     Returns: prompt string.
-    在线系统prompt
     """
     context = "\n".join([f"{turn['speaker']}: {turn['text']}" for turn in buffer])
     new_line = f"{new_turn['speaker']}: {new_turn['text']}"
@@ -17,10 +16,9 @@ def build_split_fragment_prompt(buffer, new_turn):
 
 def build_batch_split_fragment_prompt(turns):
     """
-    Build batch fragment splitting prompt for multiple turns.
+    Build batch fragment splitting prompt for multiple turns (nearline system).
     turns: List of dialogue turns, each as dict with speaker and text.
     Returns: prompt string.
-    近线系统prompt
     """
     context = "\n".join([f"{turn['speaker']}: {turn['text']}" for turn in turns])
     prompt = (

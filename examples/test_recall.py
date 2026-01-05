@@ -1,7 +1,7 @@
 """
 测试记忆召回功能
 
-使用 HAmem 的 search_memory 接口，用一句话召回相关记忆。
+使用 H-SEAM 的 search_memory 接口，用一句话召回相关记忆。
 
 使用方法:
     python examples/test_recall.py "你的查询语句" --namespace "your_namespace"
@@ -20,7 +20,7 @@ from typing import List, Dict, Any
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import Config
-from core.main import HAmem
+from core.main import H_SEAM
 
 
 def format_search_result(result: Dict[str, Any], index: int) -> str:
@@ -52,7 +52,7 @@ def test_recall(query: str, namespace: str = "default", top_k: int = 10):
         top_k: 返回结果数量
     """
     print("=" * 70)
-    print("🔍 HAmem 记忆召回测试")
+    print("🔍 H-SEAM 记忆召回测试")
     print("=" * 70)
     print(f"查询: {query}")
     print(f"命名空间: {namespace}")
@@ -64,14 +64,14 @@ def test_recall(query: str, namespace: str = "default", top_k: int = 10):
         config = Config()
         config.validate()
         
-        # 初始化 HAmem
-        print("\n📦 初始化 HAmem...")
-        hamem = HAmem(config)
-        print("✅ HAmem 初始化成功")
+        # 初始化 H-SEAM
+        print("\n📦 初始化 H-SEAM...")
+        h_seam = H_SEAM(config)
+        print("✅ H-SEAM 初始化成功")
         
         # 执行召回
         print(f"\n🔍 开始召回记忆...")
-        results = hamem.search_memory(query, top_k=top_k, namespace=namespace)
+        results = h_seam.search_memory(query, top_k=top_k, namespace=namespace)
         
         # 显示结果
         print(f"\n✅ 召回完成，共找到 {len(results)} 条结果")
@@ -99,7 +99,7 @@ def test_recall(query: str, namespace: str = "default", top_k: int = 10):
 def main():
     """主函数"""
     parser = argparse.ArgumentParser(
-        description="测试 HAmem 记忆召回功能",
+        description="测试 H-SEAM 记忆召回功能",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:

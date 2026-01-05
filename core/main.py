@@ -1,5 +1,5 @@
 """
-HAmem entry point
+H-SEAM entry point
 
 Provides a simple public API
 """
@@ -17,7 +17,7 @@ from core.retrieval import RetrievalEngine, create_qa_system
 from core.utils.input_processor import process_input_file
 
 
-class HAmem:
+class H_SEAM:
     
     
     def __init__(self, config: Config = None):
@@ -51,14 +51,14 @@ class HAmem:
             namespace="default"
         )
         
-        print("🚀 HAmem initialized successfully!")
+        print("🚀 H-SEAM initialized successfully!")
     
     def build_memory(self, conversation_data: Dict[str, Any], namespace: str = "default", llm_provider: str = None) -> Dict[str, Any]:
         """
         Build memory from conversation data
         
         Args:
-            conversation_data: Conversation data in HAmem format
+            conversation_data: Conversation data in H-SEAM format
             namespace: Namespace for storage isolation (will be used as Neo4j database name)
             llm_provider: LLM provider (if None, uses config default)
         """
@@ -289,7 +289,7 @@ class HAmem:
 
 def main():
     """Main function - example usage"""
-    print("🚀 HAmem - Hierarchical Memory System")
+    print("🚀 H-SEAM - Hierarchical Memory System")
     print("=" * 50)
     
     # Check configuration
@@ -318,22 +318,22 @@ def main():
         print(f"   - Embedding Provider: {config.embedding_config.provider}")
         print(f"   - Embedding Model: {config.embedding_config.get_model()}")
     
-    # Initialize HAmem
+    # Initialize H-SEAM
     try:
-        hamem = HAmem()
+        h_seam = H_SEAM()
     except Exception as e:
-        print(f"❌ Failed to initialize HAmem: {e}")
+        print(f"❌ Failed to initialize H-SEAM: {e}")
         return
     
     # Example usage
     print("\n📝 Example usage:")
-    print("hamem = HAmem()")
-    print("result = hamem.build_memory(conversation_data)")
-    print("answer = hamem.ask_question('What did we discuss?')")
+    print("h_seam = H_SEAM()")
+    print("result = h_seam.build_memory(conversation_data)")
+    print("answer = h_seam.ask_question('What did we discuss?')")
     
     # Show full configuration
     print(f"\n⚙️  Full Configuration:")
-    stats = hamem.get_stats()
+    stats = h_seam.get_stats()
     config_dict = stats['config']
     print(f"  - LLM: {config_dict.get('llm_provider', 'N/A')} / {config_dict.get('llm_model', 'N/A')}")
     print(f"  - Embedding: {config_dict.get('embedding_provider', 'N/A')} / {config_dict.get('embedding_model', 'N/A')}")

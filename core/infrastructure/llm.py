@@ -116,9 +116,21 @@ class LLMClient:
         params = {
             "model": model,
             "messages": messages,
-            "temperature": provider_config.temperature or 0.1,
             "max_tokens": provider_config.max_tokens or 2000
         }
+        
+        # 设置temperature（某些模型不支持自定义temperature，如gpt-5-mini）
+        # 对于不支持temperature的模型，不设置该参数（使用默认值）
+        if provider_config.temperature is not None:
+            # 检查模型是否支持自定义temperature
+            # gpt-5-mini等模型只支持默认temperature（1），不支持自定义值
+            if not (model and ('gpt-5' in model.lower() or 'o3' in model.lower())):
+                params["temperature"] = provider_config.temperature
+            # 对于不支持自定义temperature的模型，不设置temperature参数
+        else:
+            # 如果没有配置temperature，对于支持自定义temperature的模型使用默认值
+            if not (model and ('gpt-5' in model.lower() or 'o3' in model.lower())):
+                params["temperature"] = 1
         
         # 添加额外参数（如Azure的api_version）
         if provider_config.additional_params:

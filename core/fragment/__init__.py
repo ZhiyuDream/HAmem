@@ -1,5 +1,5 @@
 """
-HAmem Fragment模块
+H-SEAM Fragment模块
 
 处理对话分片功能
 """

@@ -1,5 +1,5 @@
 """
-Layer1 Prompt模块
+Layer1 Prompt Module
 """
 
 from .extraction_prompt import build_layer1_extraction_prompt

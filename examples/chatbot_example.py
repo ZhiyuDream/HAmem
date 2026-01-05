@@ -1,7 +1,7 @@
 """
 聊天机器人示例
 
-展示如何使用 HAmem 的 search_memory 接口检索历史信息，
+展示如何使用 H-SEAM 的 search_memory 接口检索历史信息，
 并将检索结果作为上下文生成对话式回答。
 
 使用方法:
@@ -33,35 +33,35 @@ def get_hour_timestamp() -> str:
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.main import HAmem
+from core.main import H_SEAM
 from config import Config
 from core.infrastructure import LLMClient
 from core.fragment.buffer_manager import BufferManager
 
 
 class ChatBot:
-    """基于 HAmem 的聊天机器人"""
+    """基于 H-SEAM 的聊天机器人"""
     
-    def __init__(self, hamem: HAmem, namespace: str = "default", save_conversation: bool = True, 
+    def __init__(self, h_seam: H_SEAM, namespace: str = "default", save_conversation: bool = True, 
                  buffer_max_length: int = 2000, max_history_rounds: int = 4):
         """
         初始化聊天机器人
         
         Args:
-            hamem: HAmem 实例
+            h_seam: H_SEAM 实例
             namespace: 命名空间
             save_conversation: 是否将新对话保存到记忆中
             buffer_max_length: 缓冲区最大长度（字符数），超过此长度才检索记忆
             max_history_rounds: 最大历史轮数（最近N轮对话）
         """
-        self.hamem = hamem
+        self.h_seam = h_seam
         self.namespace = namespace
         self.save_conversation = save_conversation
         self.buffer_max_length = buffer_max_length
         self.max_history_rounds = max_history_rounds
         
         # 初始化 LLM 客户端用于生成对话
-        self.llm_client = LLMClient(hamem.config)
+        self.llm_client = LLMClient(self.h_seam.config)
         
         # 对话历史（用于维护上下文）
         self.conversation_history: List[Dict[str, str]] = []
@@ -101,7 +101,7 @@ class ChatBot:
         print(f"\n🔍 检索历史信息...")
         try:
             # 使用 search_memory 接口检索，默认相似度阈值为 0.5
-            search_results = self.hamem.search_memory(
+            search_results = self.h_seam.search_memory(
                 query=user_input,
                 top_k=top_k,
                 namespace=self.namespace,
@@ -127,7 +127,7 @@ class ChatBot:
         print(f"\n💬 生成回答...")
         try:
             # 优先使用配置中的模型，如果没有则使用gpt-4.1-mini
-            model = self.hamem.config.llm_config.get_model() or "gpt-4.1-mini"
+            model = self.h_seam.config.llm_config.get_model() or "gpt-4.1-mini"
             response = self.llm_client.call_llm(
                 prompt=prompt,
                 model=model,
@@ -180,8 +180,8 @@ class ChatBot:
                             ]
                         }
                         # 使用配置中的LLM provider
-                        llm_provider = self.hamem.config.llm_config.provider
-                        self.hamem.build_memory(conversation_data, namespace=self.namespace, llm_provider=llm_provider)
+                        llm_provider = self.h_seam.config.llm_config.provider
+                        self.h_seam.build_memory(conversation_data, namespace=self.namespace, llm_provider=llm_provider)
                         print(f"   ✅ {self.summary_interval} 轮对话已总结并保存到记忆")
                 except Exception as e:
                     print(f"⚠️  总结记忆失败: {e}")
@@ -309,8 +309,8 @@ class ChatBot:
             # 保存到记忆（增量更新）
             print(f"\n💾 保存对话到记忆...")
             # 使用配置中的LLM provider
-            llm_provider = self.hamem.config.llm_config.provider
-            self.hamem.build_memory(conversation_data, namespace=self.namespace, llm_provider=llm_provider)
+            llm_provider = self.h_seam.config.llm_config.provider
+            self.h_seam.build_memory(conversation_data, namespace=self.namespace, llm_provider=llm_provider)
             print(f"   ✅ 对话已保存")
             
         except Exception as e:
@@ -319,7 +319,7 @@ class ChatBot:
     def interactive_chat(self):
         """启动交互式对话"""
         print("\n" + "="*60)
-        print("🤖 HAmem 聊天机器人")
+        print("🤖 H-SEAM 聊天机器人")
         print("="*60)
         print("输入 'quit' 或 'exit' 退出")
         print("输入 'clear' 清空对话历史")
@@ -355,7 +355,7 @@ class ChatBot:
 
 def main():
     """主函数"""
-    print("🚀 初始化 HAmem 聊天机器人示例...")
+    print("🚀 初始化 H-SEAM 聊天机器人示例...")
     
     # 1. 检查配置
     try:
@@ -370,23 +370,23 @@ def main():
         print("   - EMBEDDING_PROVIDER")
         return
     
-    # 2. 初始化 HAmem
+    # 2. 初始化 H-SEAM
     try:
-        hamem = HAmem(config)
+        h_seam = H_SEAM(config)
     except Exception as e:
-        print(f"❌ HAmem 初始化失败: {e}")
+        print(f"❌ H-SEAM 初始化失败: {e}")
         return
     
     # 3. 检查是否有已构建的记忆
     print("\n💡 提示:")
     print("   如果这是第一次运行，建议先构建一些记忆:")
-    print("   hamem.build_memory_from_file('your_conversation.json')")
-    print("   或者使用 hamem.build_memory(conversation_data)")
+    print("   h_seam.build_memory_from_file('your_conversation.json')")
+    print("   或者使用 h_seam.build_memory(conversation_data)")
     print()
     
     # 4. 创建聊天机器人
     chatbot = ChatBot(
-        hamem=hamem,
+        h_seam=h_seam,
         namespace="default",
         save_conversation=True  # 将新对话保存到记忆中
     )

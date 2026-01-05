@@ -1,7 +1,7 @@
 """
 Layer2 Extraction Prompt
 
-从fragment中提取时间线信息（事件、状态、上下文）
+Extract timeline information (events, states, contexts) from fragments
 """
 
 from typing import List, Dict, Any
@@ -9,23 +9,24 @@ from typing import List, Dict, Any
 
 def build_layer2_extraction_prompt(fragment_text, session_time, layer1_entities, existing_layer2_nodes: List[Dict[str, Any]] = None):
     """
-    构建Layer2提取prompt
+    Build Layer2 extraction prompt
     
     Args:
-        fragment_text: fragment文本内容
-        session_time: 会话时间信息
-        layer1_entities: Layer1提取的实体列表（用于参考）
+        fragment_text: Fragment text content
+        session_time: Session time information
+        layer1_entities: List of entities extracted in Layer1 (for reference)
+        existing_layer2_nodes: List of existing Layer2 nodes (for linking)
     
     Returns:
-        str: 构建的prompt
+        str: Constructed prompt string
     """
-    # 格式化实体列表
+    # Format entity list
     entities_str = "\n".join([
         f"- {entity.get('name', '')}: {entity.get('content', '')}" 
         for entity in layer1_entities
     ]) if layer1_entities else "No entities available"
     
-    # 格式化已有Layer2节点信息
+    # Format existing Layer2 node information
     existing_nodes_section = ""
     if existing_layer2_nodes:
         existing_nodes_list = []

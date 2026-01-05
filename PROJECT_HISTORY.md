@@ -1,4 +1,4 @@
-# HAmem Open Source Version
+# H-SEAM Open Source Version
 
 ## Project History
 
@@ -267,7 +267,7 @@ python calculate_token_count.py <conversation_idx> [dataset_path]
 
 ### 2024-10-27: Open Source Preparation
 
-**Requirement**: Open source HAmem to GitHub with core files only
+**Requirement**: Open source H-SEAM to GitHub with core files only
 
 **Plan**:
 1. **Analyze project structure** - Define the upload scope
@@ -276,7 +276,7 @@ python calculate_token_count.py <conversation_idx> [dataset_path]
    - ✅ `main.py` - Entry point
    - ✅ `README.md` - Project documentation
 
-2. **Create open-source directory** - `HAmem-open-source/`
+2. **Create open-source directory** - `H-SEAM-open-source/`
    - ✅ Copy core files into the new directory
    - ✅ Adapt README.md for the open-source version
    - ✅ Add requirements.txt
@@ -288,7 +288,7 @@ python calculate_token_count.py <conversation_idx> [dataset_path]
    - ✅ Add standard open-source files
 
 **Output**:
-- 📁 `/home/zhiyu_zheng/DCL/Others/HAmem-open-source/`
+- 📁 `/home/zhiyu_zheng/DCL/Others/H-SEAM-open-source/`
 - 📄 Includes: `core/`, `config.py`, `main.py`, `README.md`, `requirements.txt`, `.gitignore`
  
 **Next**: Provide GitHub upload guidance
@@ -307,9 +307,9 @@ python calculate_token_count.py <conversation_idx> [dataset_path]
 3. **Ordering guarantee** — start parallel searches after pre-generation
 
 **Files Modified**:
-- `HAmem/experiment/run_longmemeval_qa.py`
-- `HAmem/experiment/run_longmemeval_qa_gpt.py`
-- `HAmem/core/search/recall.py`
+- `H-SEAM/experiment/run_longmemeval_qa.py`
+- `H-SEAM/experiment/run_longmemeval_qa_gpt.py`
+- `H-SEAM/core/search/recall.py`
 
 **Expected Result**: Reduce embedding calls from 4 to 1
 
@@ -329,7 +329,7 @@ python calculate_token_count.py <conversation_idx> [dataset_path]
 - Update output filenames and messages
 - Add model info to output JSON
 
-**Output**: `HAmem/experiment/run_longmemeval_qa_gpt.py`
+**Output**: `H-SEAM/experiment/run_longmemeval_qa_gpt.py`
 
 ---
 

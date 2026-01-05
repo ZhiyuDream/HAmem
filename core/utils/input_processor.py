@@ -1,7 +1,7 @@
 """
 输入格式处理和转换工具
 
-支持从文件读取对话数据，自动识别格式并转换为HAmem标准格式
+支持从文件读取对话数据，自动识别格式并转换为H-SEAM标准格式
 """
 
 import os
@@ -40,15 +40,15 @@ def detect_format(data: Dict[str, Any]) -> str:
         data: 输入数据字典
     
     Returns:
-        格式类型: 'hamem_standard', 'locomo', 'sessions', 'messages', 'unknown'
+        格式类型: 'h_seam_standard', 'locomo', 'sessions', 'messages', 'unknown'
     """
-    # 检查是否是HAmem标准格式
+    # 检查是否是H-SEAM标准格式
     if 'messages' in data and isinstance(data['messages'], list):
         if len(data['messages']) > 0:
             msg = data['messages'][0]
             # 标准格式：包含 speaker, timestamp, content
             if 'speaker' in msg and 'timestamp' in msg and 'content' in msg:
-                return 'hamem_standard'
+                return 'h_seam_standard'
             # messages格式：包含 role, content
             elif 'role' in msg and 'content' in msg:
                 return 'messages'
@@ -68,21 +68,21 @@ def detect_format(data: Dict[str, Any]) -> str:
     return 'unknown'
 
 
-def convert_to_hamem_format(data: Dict[str, Any], format_type: str = None) -> Dict[str, Any]:
+def convert_to_h_seam_format(data: Dict[str, Any], format_type: str = None) -> Dict[str, Any]:
     """
-    将各种格式转换为HAmem标准格式
+    将各种格式转换为H-SEAM标准格式
     
     Args:
         data: 输入数据
         format_type: 格式类型（如果为None，则自动检测）
     
     Returns:
-        HAmem标准格式数据: {"messages": [...], "metadata": {...}}
+        H-SEAM标准格式数据: {"messages": [...], "metadata": {...}}
     """
     if format_type is None:
         format_type = detect_format(data)
     
-    if format_type == 'hamem_standard':
+    if format_type == 'h_seam_standard':
         # 已经是标准格式，直接返回
         return data
     
@@ -109,7 +109,7 @@ def convert_to_hamem_format(data: Dict[str, Any], format_type: str = None) -> Di
     
     elif format_type == 'locomo':
         # locomo格式转换
-        return convert_locomo_to_hamem(data)
+        return convert_locomo_to_h_seam(data)
     
     elif format_type == 'sessions':
         # sessions格式转换
@@ -136,7 +136,7 @@ def convert_to_hamem_format(data: Dict[str, Any], format_type: str = None) -> Di
     elif format_type == 'batch':
         # 批量格式：取第一个conversation
         if len(data.get('conversations', [])) > 0:
-            return convert_to_hamem_format(data['conversations'][0])
+            return convert_to_h_seam_format(data['conversations'][0])
         else:
             raise ValueError("批量格式中没有conversation数据")
     
@@ -144,15 +144,15 @@ def convert_to_hamem_format(data: Dict[str, Any], format_type: str = None) -> Di
         raise ValueError(f"不支持的格式类型: {format_type}")
 
 
-def convert_locomo_to_hamem(conversation_data: Dict[str, Any]) -> Dict[str, Any]:
+def convert_locomo_to_h_seam(conversation_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    将locomo格式转换为HAmem标准格式
+    将locomo格式转换为H-SEAM标准格式
     
     Args:
         conversation_data: locomo格式数据
     
     Returns:
-        HAmem标准格式数据
+        H-SEAM标准格式数据
     """
     conversation = conversation_data.get("conversation", {})
     speaker_a = conversation.get("speaker_a", "User")
@@ -214,9 +214,9 @@ def convert_locomo_to_hamem(conversation_data: Dict[str, Any]) -> Dict[str, Any]
         }
     }
 
-def validate_hamem_format(data: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+def validate_h_seam_format(data: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
     """
-    验证数据是否符合HAmem标准格式
+    验证数据是否符合H-SEAM标准格式
     
     Args:
         data: 待验证的数据
@@ -261,7 +261,7 @@ def process_input_file(file_path: str) -> Dict[str, Any]:
         file_path: 输入文件路径
     
     Returns:
-        HAmem标准格式数据
+        H-SEAM标准格式数据
     
     Raises:
         FileNotFoundError: 文件不存在
@@ -276,10 +276,10 @@ def process_input_file(file_path: str) -> Dict[str, Any]:
         raise ValueError(f"无法识别文件格式: {file_path}")
     
     # 3. 转换为标准格式
-    standard_data = convert_to_hamem_format(data, format_type)
+    standard_data = convert_to_h_seam_format(data, format_type)
     
     # 4. 验证格式
-    is_valid, error_msg = validate_hamem_format(standard_data)
+    is_valid, error_msg = validate_h_seam_format(standard_data)
     if not is_valid:
         raise ValueError(f"格式验证失败: {error_msg}")
     

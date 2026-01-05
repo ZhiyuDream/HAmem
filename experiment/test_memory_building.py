@@ -29,7 +29,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from config import Config
-from core.main import HAmem
+from core.main import H_SEAM
 from core.infrastructure.token_tracker import TokenTracker
 
 
@@ -42,9 +42,9 @@ def load_locomo_dataset(file_path: str) -> List[Dict[str, Any]]:
     return data
 
 
-def convert_conversation_to_hamem_format(conversation_data: Dict[str, Any]) -> Dict[str, Any]:
+def convert_conversation_to_h_seam_format(conversation_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    将locomo格式的conversation转换为HAmem格式
+    将locomo格式的conversation转换为H-SEAM格式
     """
     conversation = conversation_data.get("conversation", {})
     speaker_a = conversation.get("speaker_a", "User")
@@ -212,9 +212,9 @@ def test_memory_building(conversation_idx: int, dataset_path: str = None, model:
     # 获取conversation
     conversation_data = dataset[conversation_idx]
     
-    # 转换为HAmem格式
-    hamem_data = convert_conversation_to_hamem_format(conversation_data)
-    messages = hamem_data["messages"]
+    # 转换为H-SEAM格式
+    h_seam_data = convert_conversation_to_h_seam_format(conversation_data)
+    messages = h_seam_data["messages"]
     
     print(f"\n📊 Conversation {conversation_idx} 统计:")
     print(f"  - 消息数量: {len(messages)}")
@@ -248,8 +248,8 @@ def test_memory_building(conversation_idx: int, dataset_path: str = None, model:
     
     print(f"\n🔄 开始实际记忆构建流程...")
     
-    # 初始化HAmem
-    hamem = HAmem(config)
+    # 初始化H-SEAM
+    h_seam = H_SEAM(config)
     
     # 记录开始时间
     start_time = time.time()
@@ -264,7 +264,7 @@ def test_memory_building(conversation_idx: int, dataset_path: str = None, model:
     try:
         from core.memory import MemoryBuilder, ConversationData
         memory_builder = MemoryBuilder(config)
-        conversation = ConversationData.from_dict(hamem_data)
+        conversation = ConversationData.from_dict(h_seam_data)
         # 使用config中的provider（从模型推断或配置中获取）
         llm_provider = config.llm_provider
         result = memory_builder.build_memory(conversation, namespace=namespace, token_tracker=token_tracker, llm_provider=llm_provider)

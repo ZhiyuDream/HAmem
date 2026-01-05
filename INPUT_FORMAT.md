@@ -1,10 +1,10 @@
-# HAmem 输入格式规范
+# H-SEAM 输入格式规范
 
-本文档详细说明 HAmem 系统支持的所有输入格式，以及如何将数据转换为 HAmem 标准格式。
+本文档详细说明 H-SEAM 系统支持的所有输入格式，以及如何将数据转换为 H-SEAM 标准格式。
 
 ## 📋 目录
 
-- [HAmem 标准格式（推荐）](#hamem-标准格式推荐)
+- [H-SEAM 标准格式（推荐）](#h-seam-标准格式推荐)
 - [支持的输入格式](#支持的输入格式)
   - [Messages 格式](#messages-格式)
   - [Locomo 格式](#locomo-格式)
@@ -15,9 +15,9 @@
 
 ---
 
-## HAmem 标准格式（推荐）
+## H-SEAM 标准格式（推荐）
 
-**这是 HAmem 系统的标准格式，推荐所有用户使用此格式。**
+**这是 H-SEAM 系统的标准格式，推荐所有用户使用此格式。**
 
 ### 格式结构
 
@@ -75,7 +75,7 @@
 
 ## 支持的输入格式
 
-HAmem 系统支持以下输入格式，并会自动识别和转换：
+H-SEAM 系统支持以下输入格式，并会自动识别和转换：
 
 ### Messages 格式
 
@@ -250,7 +250,7 @@ Locomo 数据集的格式。
 }
 ```
 
-**输出（HAmem 标准格式）**：
+**输出（H-SEAM 标准格式）**：
 ```json
 {
   "messages": [
@@ -288,7 +288,7 @@ Locomo 数据集的格式。
 }
 ```
 
-**输出（HAmem 标准格式）**：
+**输出（H-SEAM 标准格式）**：
 ```json
 {
   "messages": [
@@ -328,29 +328,29 @@ Locomo 数据集的格式。
 ### 方式 1：从文件读取（推荐）
 
 ```python
-from core.main import HAmem
+from core.main import H_SEAM
 
-hamem = HAmem()
+h_seam = H-SEAM()
 
 # 自动识别格式并转换
-result = hamem.build_memory_from_file("conversation.json")
+result = h_seam.build_memory_from_file("conversation.json")
 ```
 
 系统会自动：
 1. 读取 JSON 文件
 2. 检测输入格式
-3. 转换为 HAmem 标准格式
+3. 转换为 H-SEAM 标准格式
 4. 验证格式正确性
 5. 构建记忆
 
 ### 方式 2：直接传入数据
 
 ```python
-from core.main import HAmem
+from core.main import H_SEAM
 
-hamem = HAmem()
+h_seam = H-SEAM()
 
-# 使用 HAmem 标准格式
+# 使用 H-SEAM 标准格式
 conversation_data = {
     "messages": [
         {
@@ -366,7 +366,7 @@ conversation_data = {
     ]
 }
 
-result = hamem.build_memory(conversation_data)
+result = h_seam.build_memory(conversation_data)
 ```
 
 ### 方式 3：手动转换格式
@@ -378,18 +378,18 @@ from core.utils.input_processor import process_input_file
 standard_data = process_input_file("conversation.json")
 
 # 或者手动转换
-from core.utils.input_processor import convert_to_hamem_format, detect_format
+from core.utils.input_processor import convert_to_h_seam_format, detect_format
 
 data = {...}  # 你的数据
 format_type = detect_format(data)
-standard_data = convert_to_hamem_format(data, format_type)
+standard_data = convert_to_h_seam_format(data, format_type)
 ```
 
 ---
 
 ## 格式验证
 
-系统会自动验证转换后的数据是否符合 HAmem 标准格式：
+系统会自动验证转换后的数据是否符合 H-SEAM 标准格式：
 
 - ✅ 必须包含 `messages` 字段
 - ✅ `messages` 必须是列表
@@ -402,7 +402,7 @@ standard_data = convert_to_hamem_format(data, format_type)
 
 ## 最佳实践
 
-1. **推荐使用 HAmem 标准格式**：这是最直接、最高效的方式
+1. **推荐使用 H-SEAM 标准格式**：这是最直接、最高效的方式
 2. **提供准确的时间戳**：有助于系统更好地理解对话的时间顺序
 3. **合理使用 metadata**：可以存储额外的上下文信息，但不要过度使用
 4. **保持格式一致性**：在同一对话中，尽量保持字段命名和结构的一致性
@@ -414,7 +414,7 @@ standard_data = convert_to_hamem_format(data, format_type)
 ### Q: 我的数据格式不在支持列表中怎么办？
 
 A: 你可以：
-1. 先将数据转换为 HAmem 标准格式
+1. 先将数据转换为 H-SEAM 标准格式
 2. 或者转换为 Messages 格式（最简单）
 3. 或者联系开发者添加新的格式支持
 

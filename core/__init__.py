@@ -1,5 +1,5 @@
 """
-HAmem Core模块
+H-SEAM Core模块
 
 提供核心基础设施功能
 """

@@ -1,21 +1,21 @@
 """
-Layer1实体和关系提取Prompt
+Layer1 Entity and Relationship Extraction Prompt
 """
 
 from typing import List, Dict, Any
 
 def build_layer1_extraction_prompt(fragment_text: str, existing_entities: List[Dict[str, Any]] = None) -> str:
     """
-    构建Layer1提取prompt（支持已有实体召回和关联）
+    Build Layer1 extraction prompt (supports existing entity recall and linking)
     
     Args:
-        fragment_text: Fragment的对话内容
-        existing_entities: 召回的已有实体列表（用于关联和补充）
+        fragment_text: Conversation content of the fragment
+        existing_entities: List of recalled existing entities (for linking and supplementing)
     
     Returns:
-        提取prompt
+        Extraction prompt string
     """
-    # 格式化已有实体信息
+    # Format existing entity information
     existing_entities_section = ""
     if existing_entities:
         existing_entities_list = []

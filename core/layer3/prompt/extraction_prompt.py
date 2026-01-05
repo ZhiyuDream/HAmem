@@ -1,35 +1,35 @@
 """
 Layer3 Pattern Analysis Prompt
 
-从聚类的事件中提取模式、偏好和行为规则
+Extract patterns, preferences, and behavior rules from clustered events
 """
 
 
 def build_pattern_analysis_prompt(cluster_events, related_states, related_contexts):
     """
-    构建模式分析prompt
+    Build pattern analysis prompt
     
     Args:
-        cluster_events: 聚类的事件列表
-        related_states: 相关的状态列表
-        related_contexts: 相关的上下文列表
+        cluster_events: List of clustered events
+        related_states: List of related states
+        related_contexts: List of related contexts
     
     Returns:
-        str: 构建的prompt
+        str: Constructed prompt string
     """
-    # 格式化事件
+    # Format events
     event_summaries = []
     for event in cluster_events:
         event_summaries.append(f"- {event.get('content', 'Unknown event')}")
     
-    # 格式化状态
+    # Format states
     state_summaries = []
-    for state in related_states[:10]:  # 限制数量
+    for state in related_states[:10]:  # Limit count
         state_summaries.append(f"- {state.get('content', 'Unknown state')}")
     
-    # 格式化上下文
+    # Format contexts
     context_summaries = []
-    for context in related_contexts[:10]:  # 限制数量
+    for context in related_contexts[:10]:  # Limit count
         context_summaries.append(f"- {context.get('content', 'Unknown context')}")
     
     events_text = "\n".join(event_summaries) if event_summaries else "No events"

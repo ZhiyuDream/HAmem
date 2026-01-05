@@ -331,9 +331,9 @@ class QASystem:
             recalled = self.recall.multi_layer_recall_with_expansion(
                 question,
                 layer0_top_k=1,   # 2 → 1
-                layer1_top_k=3,   # 10 → 5
-                layer2_top_k=3,  # 20 → 10
-                layer3_top_k=3,   # 5 → 3
+                layer1_top_k=10,   # 10 → 5
+                layer2_top_k=20,  # 20 → 10
+                layer3_top_k=5,   # 5 → 3
                 max_hops=0,  # 初始召回不扩展
                 expand_limit=0
             )
@@ -348,9 +348,9 @@ class QASystem:
             recalled = self.recall.multi_layer_recall(
                 question,
                 layer0_top_k=1,   # 2 → 1
-                layer1_top_k=3,   # 10 → 5
-                layer2_top_k=3,  # 20 → 10
-                layer3_top_k=3   # 5 → 3
+                layer1_top_k=10,   # 10 → 5
+                layer2_top_k=20,  # 20 → 10
+                layer3_top_k=5   # 5 → 3
             )
             current_nodes = (
                 recalled.get('layer0', []) + 

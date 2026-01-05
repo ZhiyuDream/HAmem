@@ -1,4 +1,4 @@
 """
-Utility modules for HAmem
+Utility modules for H-SEAM
 """
 

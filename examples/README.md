@@ -1,247 +1,245 @@
-# HAmem 示例
+# H-SEAM Examples
 
-本目录包含 HAmem 的使用示例。
+This directory contains usage examples for H-SEAM.
 
-## 记忆召回测试示例
+## Memory Recall Test Example
 
-### `test_recall.py` - 测试记忆召回功能
+### `test_recall.py` - Test Memory Recall Functionality
 
-展示如何使用 HAmem 的 `search_memory` 接口，用一句话召回相关记忆。
+Demonstrates how to use H-SEAM's `search_memory` interface to recall relevant memories with a single query.
 
-#### 功能特点
+#### Features
 
-1. **简单易用**
-   - 通过命令行参数指定查询语句和命名空间
-   - 支持自定义返回结果数量
+1. **Simple and Easy to Use**
+   - Specify query statement and namespace via command-line arguments
+   - Support custom number of returned results
 
-2. **完整展示**
-   - 显示召回到的所有节点信息
-   - 包括节点ID、类型、层级和内容
+2. **Complete Display**
+   - Show all recalled node information
+   - Include node ID, type, layer, and content
 
-#### 使用方法
+#### Usage
 
 ```bash
-# 基本用法（使用默认命名空间）
-python examples/test_recall.py "你的查询语句"
+# Basic usage (using default namespace)
+python examples/test_recall.py "your query statement"
 
-# 指定命名空间
-python examples/test_recall.py "记忆机制" --namespace "locomo_conv_0"
+# Specify namespace
+python examples/test_recall.py "memory mechanism" --namespace "locomo_conv_0"
 
-# 指定返回数量
-python examples/test_recall.py "记忆机制" --namespace "default" --top-k 5
+# Specify number of results
+python examples/test_recall.py "memory mechanism" --namespace "default" --top-k 5
 ```
 
-#### 示例输出
+#### Example Output
 
 ```
 ======================================================================
-🔍 HAmem 记忆召回测试
+🔍 H-SEAM Memory Recall Test
 ======================================================================
-查询: 我研究的是大模型记忆方向
-命名空间: default
+Query: I'm researching large model memory systems
+Namespace: default
 Top-K: 10
 ======================================================================
 
-📦 初始化 HAmem...
-✅ HAmem 初始化成功
+📦 Initializing H-SEAM...
+✅ H-SEAM initialized successfully
 
-🔍 开始召回记忆...
-✅ 召回完成，共找到 3 条结果
+🔍 Starting memory recall...
+✅ Recall completed, found 3 results
 ======================================================================
 
-📋 召回结果:
+📋 Recall Results:
 
 [1] fragment_1
   - Type: fragment
   - Layer: 0
-  - Content: user: 我研究的是大模型记忆方向...
+  - Content: user: I'm researching large model memory systems...
 
 [2] entity_1
   - Type: entity
   - Layer: 1
-  - Content: 大模型记忆方向...
+  - Content: Large model memory systems...
 
 [3] event_1
   - Type: event
   - Layer: 2
-  - Content: 研究大模型记忆方向...
+  - Content: Researching large model memory systems...
 ======================================================================
 ```
 
-## 聊天机器人示例
+## Chatbot Example
 
-### `chatbot_example.py` - 基于 HAmem 的聊天机器人
+### `chatbot_example.py` - H-SEAM-based Chatbot
 
-展示如何使用 HAmem 的 `search_memory` 接口检索历史信息，并将检索结果作为上下文生成对话式回答。
+Demonstrates how to use H-SEAM's `search_memory` interface to retrieve historical information and generate conversational responses based on the retrieved results.
 
-#### 功能特点
+#### Features
 
-1. **自动检索历史信息**
-   - 使用 `hamem.search_memory()` 接口检索相关历史信息
-   - 自动将检索结果格式化为上下文
+1. **Automatic Historical Information Retrieval**
+   - Use `h_seam.search_memory()` interface to retrieve relevant historical information
+   - Automatically format retrieved results as context
 
-2. **对话式回答生成**
-   - 不是简单的 QA，而是基于历史上下文的自然对话
-   - 使用 LLM 生成友好、自然的回答
+2. **Conversational Response Generation**
+   - Not simple QA, but natural conversation based on historical context
+   - Use LLM to generate friendly, natural responses
 
-3. **交互式对话**
-   - 支持多轮对话
-   - 维护对话历史上下文
+3. **Interactive Conversation**
+   - Support multi-turn conversations
+   - Maintain conversation history context
 
-4. **自动保存对话**
-   - 可选：将新对话自动保存到记忆中
-   - 下次对话时可以检索到之前的内容
+4. **Automatic Conversation Saving**
+   - Optional: Automatically save new conversations to memory
+   - Can retrieve previous content in next conversation
 
-#### 使用方法
+#### Usage
 
 ```bash
-# 1. 确保已配置 API keys（在 .env 文件中）
+# 1. Ensure API keys are configured (in .env file)
 #    - LLM_API_KEY
 #    - LLM_PROVIDER
 #    - EMBEDDING_API_KEY
 #    - EMBEDDING_PROVIDER
 
-# 2. 运行聊天机器人
+# 2. Run the chatbot
 python examples/chatbot_example.py
 ```
 
-#### 使用流程
+#### Usage Flow
 
-1. **首次使用**（可选）：先构建一些记忆
+1. **First Use** (optional): Build some memory first
    ```python
-   from core.main import HAmem
+   from core.main import H_SEAM
    
-   hamem = HAmem()
-   # 从文件构建记忆
-   hamem.build_memory_from_file('your_conversation.json')
-   # 或者直接构建
-   hamem.build_memory(conversation_data)
+   h_seam = H_SEAM()
+   # Build memory from file
+   h_seam.build_memory_from_file('your_conversation.json')
+   # Or build directly
+   h_seam.build_memory(conversation_data)
    ```
 
-2. **启动聊天机器人**
+2. **Start Chatbot**
    ```bash
    python examples/chatbot_example.py
    ```
 
-3. **开始对话**
-   - 输入你的问题或消息
-   - 机器人会自动检索相关历史信息
-   - 基于历史信息生成回答
+3. **Start Conversation**
+   - Enter your question or message
+   - The bot will automatically retrieve relevant historical information
+   - Generate responses based on historical information
 
-#### 命令
+#### Commands
 
-- `quit` 或 `exit`: 退出程序
-- `clear`: 清空对话历史（不影响已保存的记忆）
+- `quit` or `exit`: Exit the program
+- `clear`: Clear conversation history (does not affect saved memories)
 
-#### 代码示例
+#### Code Example
 
 ```python
-from core.main import HAmem
+from core.main import H_SEAM
 from examples.chatbot_example import ChatBot
 
-# 初始化 HAmem
-hamem = HAmem()
+# Initialize H-SEAM
+h_seam = H_SEAM()
 
-# 创建聊天机器人
+# Create chatbot
 chatbot = ChatBot(
-    hamem=hamem,
+    h_seam=h_seam,
     namespace="default",
-    save_conversation=True  # 保存新对话到记忆
+    save_conversation=True  # Save new conversations to memory
 )
 
-# 单次对话
-response = chatbot.chat("你好，我们之前聊过什么？")
+# Single conversation
+response = chatbot.chat("Hello, what did we talk about before?")
 print(response)
 
-# 或者启动交互式对话
+# Or start interactive conversation
 chatbot.interactive_chat()
 ```
 
-#### 工作原理
+#### How It Works
 
-1. **检索阶段**：使用 `search_memory()` 检索与用户输入相关的历史信息
-2. **上下文构建**：将检索结果格式化为上下文文本
-3. **提示构建**：结合历史上下文、最近对话历史和当前用户输入构建提示
-4. **回答生成**：调用 LLM 生成对话式回答
-5. **保存对话**（可选）：将新对话保存到记忆中，供后续检索
+1. **Retrieval Phase**: Use `search_memory()` to retrieve historical information related to user input
+2. **Context Construction**: Format retrieved results as context text
+3. **Prompt Construction**: Combine historical context, recent conversation history, and current user input to build prompts
+4. **Response Generation**: Call LLM to generate conversational responses
+5. **Save Conversation** (optional): Save new conversations to memory for subsequent retrieval
 
-#### 与 QA 系统的区别
+#### Differences from QA System
 
-- **QA 系统** (`ask_question`): 专注于回答问题，返回结构化的答案
-- **聊天机器人** (`chatbot_example`): 专注于自然对话，生成对话式的回答，更注重上下文连贯性
+- **QA System** (`ask_question`): Focuses on answering questions, returns structured answers
+- **Chatbot** (`chatbot_example`): Focuses on natural conversation, generates conversational responses, emphasizes context coherence
 
 ---
 
-### `chatbot_web.py` - 网页版聊天机器人
+### `chatbot_web.py` - Web-based Chatbot
 
-提供基于 Web 的聊天界面，使用 HAmem 进行记忆检索和对话生成。默认使用 **gpt-4.1-mini** 生成回答。
+Provides a web-based chat interface using H-SEAM for memory retrieval and conversation generation. Default uses **gpt-4.1-mini** to generate responses.
 
-#### 功能特点
+#### Features
 
-1. **Web 界面**
-   - 现代化的聊天界面设计
-   - 实时对话，无需刷新页面
-   - 响应式设计，支持移动端
+1. **Web Interface**
+   - Modern chat interface design
+   - Real-time conversation, no page refresh needed
+   - Responsive design, supports mobile devices
 
-2. **自动检索历史信息**
-   - 每次对话自动检索相关历史信息
-   - 显示检索到的历史信息数量
+2. **Automatic Historical Information Retrieval**
+   - Automatically retrieve relevant historical information for each conversation
+   - Display the number of retrieved historical information
 
-3. **对话式回答**
-   - 使用 gpt-4.1-mini 生成自然、友好的回答
-   - 基于历史上下文和对话历史生成回答
+3. **Conversational Responses**
+   - Use gpt-4.1-mini to generate natural, friendly responses
+   - Generate responses based on historical context and conversation history
 
-4. **自动保存对话**
-   - 自动将新对话保存到记忆中
-   - 下次对话时可以检索到之前的内容
+4. **Automatic Conversation Saving**
+   - Automatically save new conversations to memory
+   - Can retrieve previous content in next conversation
 
-#### 使用方法
+#### Usage
 
 ```bash
-# 1. 安装依赖（如果还没有安装）
+# 1. Install dependencies (if not already installed)
 pip install flask flask-cors
 
-# 2. 确保已配置 API keys（在 .env 文件中）
+# 2. Ensure API keys are configured (in .env file)
 #    - OPENAI_API_KEY
 #    - OPENAI_BASE_URL
-#    - NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD（如果使用Neo4j）
+#    - NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD (if using Neo4j)
 
-# 3. 启动 Web 服务器
+# 3. Start web server
 python examples/chatbot_web.py
 ```
 
-#### 访问界面
+#### Access Interface
 
-启动后，在浏览器中访问：
+After starting, access in browser:
 ```
 http://localhost:5000
 ```
 
-#### API 接口
+#### API Endpoints
 
-- `POST /api/chat`: 发送消息，获取回答
+- `POST /api/chat`: Send message, get response
   ```json
   {
-    "message": "你好，我们之前聊过什么？",
+    "message": "Hello, what did we talk about before?",
     "top_k": 5
   }
   ```
 
-- `GET /api/history`: 获取对话历史
+- `GET /api/history`: Get conversation history
 
-- `POST /api/clear`: 清空对话历史
+- `POST /api/clear`: Clear conversation history
 
-- `GET /api/status`: 获取服务状态
+- `GET /api/status`: Get service status
 
-#### 界面功能
+#### Interface Features
 
-- **发送消息**：在输入框中输入消息，点击"发送"或按 Enter 键
-- **清空历史**：点击右上角"清空历史"按钮
-- **实时状态**：显示连接状态和检索到的历史信息数量
+- **Send Message**: Enter message in input box, click "Send" or press Enter
+- **Clear History**: Click "Clear History" button in top right corner
+- **Real-time Status**: Display connection status and number of retrieved historical information
 
-#### 与终端版的区别
+#### Differences from Terminal Version
 
-- **终端版** (`chatbot_example.py`): 在终端中交互，适合开发和调试
-- **网页版** (`chatbot_web.py`): 提供 Web 界面，更适合用户使用，支持多用户访问
-
-
+- **Terminal Version** (`chatbot_example.py`): Interactive in terminal, suitable for development and debugging
+- **Web Version** (`chatbot_web.py`): Provides web interface, more suitable for users, supports multi-user access

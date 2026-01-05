@@ -1,5 +1,5 @@
 """
-HAmem 网页版聊天机器人
+H-SEAM 网页版聊天机器人
 
 使用 Flask 提供 Web 界面，支持基于记忆的对话式聊天。
 
@@ -29,7 +29,7 @@ def get_hour_timestamp() -> str:
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from core.main import HAmem
+from core.main import H_SEAM
 from config import Config
 from core.infrastructure.llm import LLMClient
 from core.fragment.buffer_manager import BufferManager
@@ -38,7 +38,7 @@ app = Flask(__name__, template_folder=os.path.join(os.path.dirname(__file__), 't
 CORS(app)
 
 # 全局变量
-hamem_instance: Optional[HAmem] = None
+h_seam_instance: Optional[H_SEAM] = None
 llm_client: Optional[LLMClient] = None
 conversation_history: List[Dict[str, str]] = []
 buffer_manager: Optional[BufferManager] = None
@@ -48,19 +48,19 @@ turn_count = 0  # 对话轮数计数器
 SUMMARY_INTERVAL = 10  # 每10轮总结一次记忆
 
 
-def init_hamem():
-    """初始化 HAmem 实例"""
-    global hamem_instance, llm_client, buffer_manager
+def init_h_seam():
+    """初始化 H-SEAM 实例"""
+    global h_seam_instance, llm_client, buffer_manager
     
     try:
         config = Config()
         config.validate()
-        hamem_instance = HAmem(config)
+        h_seam_instance = H_SEAM(config)
         llm_client = LLMClient(config)
         buffer_manager = BufferManager(max_length=BUFFER_MAX_LENGTH)
         return True
     except Exception as e:
-        print(f"❌ HAmem 初始化失败: {e}")
+        print(f"❌ H-SEAM 初始化失败: {e}")
         return False
 
 
@@ -141,10 +141,10 @@ def chat():
     """聊天API"""
     global conversation_history, buffer_manager
     
-    if not hamem_instance or not llm_client or not buffer_manager:
+    if not h_seam_instance or not llm_client or not buffer_manager:
         return jsonify({
             'success': False,
-            'error': 'HAmem 未初始化，请检查配置'
+            'error': 'H-SEAM 未初始化，请检查配置'
         }), 500
     
     data = request.json
@@ -170,7 +170,7 @@ def chat():
         
         try:
             # 使用 search_memory 接口检索，默认相似度阈值为 0.5
-            search_results = hamem_instance.search_memory(
+            search_results = h_seam_instance.search_memory(
                 query=user_input,
                 top_k=top_k,
                 namespace=namespace,
@@ -186,7 +186,7 @@ def chat():
         
         # 3. 调用 LLM 生成回答（使用配置中的模型，如果没有指定则使用gpt-4.1-mini）
         # 优先使用配置中的模型，如果没有则使用gpt-4.1-mini
-        model = hamem_instance.config.llm_config.get_model() or "gpt-4.1-mini"
+        model = h_seam_instance.config.llm_config.get_model() or "gpt-4.1-mini"
         response = llm_client.call_llm(
             prompt=prompt,
             model=model,
@@ -236,8 +236,8 @@ def chat():
                             ]
                         }
                         # 使用配置中的LLM provider
-                        llm_provider = hamem_instance.config.llm_config.provider
-                        hamem_instance.build_memory(conversation_data, namespace=namespace, llm_provider=llm_provider)
+                        llm_provider = h_seam_instance.config.llm_config.provider
+                        h_seam_instance.build_memory(conversation_data, namespace=namespace, llm_provider=llm_provider)
                         print(f"   ✅ {SUMMARY_INTERVAL} 轮对话已总结并保存到记忆")
                 except Exception as e:
                     print(f"⚠️  总结记忆失败: {e}")
@@ -279,21 +279,21 @@ def status():
     """获取状态"""
     return jsonify({
         'success': True,
-        'initialized': hamem_instance is not None,
+        'initialized': h_seam_instance is not None,
         'history_length': len(conversation_history)
     })
 
 
 def main():
     """主函数"""
-    print("🚀 启动 HAmem 网页版聊天机器人...")
+    print("🚀 启动 H-SEAM 网页版聊天机器人...")
     
-    # 初始化 HAmem
-    if not init_hamem():
+    # 初始化 H-SEAM
+    if not init_h_seam():
         print("❌ 初始化失败，请检查配置")
         return
     
-    print("✅ HAmem 初始化成功")
+    print("✅ H-SEAM 初始化成功")
     print("🌐 访问 http://localhost:5000 开始聊天")
     print("按 Ctrl+C 停止服务器\n")
     

@@ -2,7 +2,7 @@
 LLM和Embedding配置类
 
 支持自由配置多种LLM提供商和Embedding提供商
-参考mem0的设计，但保持HAmem的代码风格（使用dataclass）
+参考mem0的设计，但保持H-SEAM的代码风格（使用dataclass）
 """
 
 import os

@@ -28,7 +28,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from config import Config
-from core.main import HAmem
+from core.main import H_SEAM
 from core.infrastructure.token_tracker import TokenTracker
 from core.infrastructure.llm import LLMClient
 
@@ -623,8 +623,8 @@ def test_qa(
         actual_model = config.llm_model
         print(f"  - 使用模型: {actual_model} (来自配置)")
     
-    # 初始化HAmem
-    hamem = HAmem(config)
+    # 初始化H-SEAM
+    h_seam = H_SEAM(config)
     
     # 获取QA系统并打补丁
     from core.infrastructure import UnifiedCache, EmbeddingManager

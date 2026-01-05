@@ -1,5 +1,5 @@
 """
-Layer1冲突解决Prompt
+Layer1 Conflict Resolution Prompt
 """
 
 from typing import Dict, List, Any
@@ -13,20 +13,20 @@ def build_conflict_resolution_prompt(
     relation_candidates: Dict[str, List[Dict[str, Any]]]
 ) -> str:
     """
-    构建批量冲突解决prompt
+    Build batch conflict resolution prompt
     
     Args:
-        fragment_text: 原始fragment文本
-        new_entities: 新提取的实体列表
-        new_relationships: 新提取的关系列表
-        entity_candidates: 实体候选集 {entity_name: [candidates]}
-        relation_candidates: 关系候选集 {relation_key: [candidates]}
+        fragment_text: Original fragment text
+        new_entities: List of newly extracted entities
+        new_relationships: List of newly extracted relationships
+        entity_candidates: Entity candidate set {entity_name: [candidates]}
+        relation_candidates: Relationship candidate set {relation_key: [candidates]}
     
     Returns:
-        冲突解决prompt
+        Conflict resolution prompt string
     """
     
-    # 构建实体候选信息
+    # Build entity candidate information
     entity_candidates_str = ""
     for entity_name, candidates in entity_candidates.items():
         if candidates:
@@ -38,7 +38,7 @@ def build_conflict_resolution_prompt(
         else:
             entity_candidates_str += f"\n### Historical Candidates for '{entity_name}': None\n"
     
-    # 构建关系候选信息
+    # Build relationship candidate information
     relation_candidates_str = ""
     for relation_key, candidates in relation_candidates.items():
         if candidates and candidates != "new_relation":
@@ -51,14 +51,14 @@ def build_conflict_resolution_prompt(
         else:
             relation_candidates_str += f"\n### Historical Candidates for '{relation_key}': None\n"
     
-    # 构建新实体列表
+    # Build new entity list
     new_entities_str = ""
     for i, entity in enumerate(new_entities, 1):
         name = entity.get('name', 'Unknown')
         content = entity.get('content', 'No content')
         new_entities_str += f"  {i}. Name: {name}, Content: {content}\n"
     
-    # 构建新关系列表
+    # Build new relationship list
     new_relationships_str = ""
     for i, rel in enumerate(new_relationships, 1):
         source = rel.get('source', 'Unknown')

@@ -1,4 +1,4 @@
-# HAmem - Hierarchical Memory System
+# H-SEAM - Hierarchical Memory System
 
 A high-performance hierarchical memory system designed for conversational memory construction and retrieval, powered by **Neo4j graph database** and **hybrid search architecture**.
 
@@ -23,7 +23,7 @@ A high-performance hierarchical memory system designed for conversational memory
 ## 🏗️ Architecture
 
 ```
-HAmem/
+H-SEAM/
 ├── 🧠 core/                    # Core system
 │   ├── infrastructure/         # Infrastructure
 │   │   ├── embedding.py        # Embedding management
@@ -158,7 +158,7 @@ EOF
 
 ### 3. Setup Neo4j Database
 
-HAmem uses Neo4j as the primary storage backend. Make sure Neo4j is running:
+H-SEAM uses Neo4j as the primary storage backend. Make sure Neo4j is running:
 
 ```bash
 # Using Docker (recommended)
@@ -228,9 +228,9 @@ cat experiment/logs/summary.json
 
 #### Input Format
 
-HAmem supports multiple input formats, and the system will automatically identify and convert them. **We recommend using the HAmem standard format**.
+H-SEAM supports multiple input formats, and the system will automatically identify and convert them. **We recommend using the H-SEAM standard format**.
 
-**HAmem Standard Format (Recommended)**:
+**H-SEAM Standard Format (Recommended)**:
 ```python
 conversation_data = {
     "messages": [
@@ -249,7 +249,7 @@ conversation_data = {
 ```
 
 **Supported Formats**:
-- ✅ HAmem Standard Format (Recommended)
+- ✅ H-SEAM Standard Format (Recommended)
 - ✅ Messages Format (similar to OpenAI Chat API)
 - ✅ Locomo Format
 - ✅ Sessions Format
@@ -262,15 +262,15 @@ For detailed format specifications, please refer to [INPUT_FORMAT.md](INPUT_FORM
 **Basic Usage**:
 
 ```python
-from core.main import HAmem
+from core.main import H-SEAM
 
 # Initialize
-hamem = HAmem()
+h_seam = H-SEAM()
 
 # Method 1: Read from file (automatic format detection)
-result = hamem.build_memory_from_file("conversation.json", namespace="my_project")
+result = h_seam.build_memory_from_file("conversation.json", namespace="my_project")
 
-# Method 2: Pass data directly (HAmem Standard Format)
+# Method 2: Pass data directly (H-SEAM Standard Format)
 conversation_data = {
     "messages": [
         {
@@ -285,7 +285,7 @@ conversation_data = {
         }
     ]
 }
-result = hamem.build_memory(conversation_data, namespace="my_project")
+result = h_seam.build_memory(conversation_data, namespace="my_project")
 
 # Method 3: Use other formats (system will automatically convert)
 conversation_data = {
@@ -307,34 +307,34 @@ conversation_data = {
         }
     ]
 }
-result = hamem.build_memory(conversation_data, namespace="my_project")
+result = h_seam.build_memory(conversation_data, namespace="my_project")
 
 # Build memory (namespace for data isolation)
 namespace = "project_1"
-memory_result = hamem.build_memory(conversation_data, namespace=namespace)
+memory_result = h_seam.build_memory(conversation_data, namespace=namespace)
 
 # Search memory
-results = hamem.search_memory("What is the user working on?", namespace=namespace)
+results = h_seam.search_memory("What is the user working on?", namespace=namespace)
 
 # Q&A
-answer = hamem.ask_question("What did we discuss?", namespace=namespace)
+answer = h_seam.ask_question("What did we discuss?", namespace=namespace)
 ```
 
 **Chatbot Example** (using search_memory to retrieve historical information and generate conversational responses):
 
 ```python
-from core.main import HAmem
+from core.main import H-SEAM
 from examples.chatbot_example import ChatBot
 
-# Initialize HAmem
-hamem = HAmem()
+# Initialize H-SEAM
+h_seam = H-SEAM()
 
 # Optional: Build some memory first
-hamem.build_memory_from_file("conversation.json")
+h_seam.build_memory_from_file("conversation.json")
 
 # Create chatbot
 chatbot = ChatBot(
-    hamem=hamem,
+    h_seam=h_seam,
     namespace="default",
     save_conversation=True  # Save new conversations to memory
 )
@@ -467,7 +467,7 @@ python main.py
 - **API Design**: See `API_DESIGN.md` for detailed API documentation
 - **Project History**: See `PROJECT_HISTORY.md` for development history and features
 
-## 🔍 Key Differences from Original HAmem
+## 🔍 Key Differences from Original H-SEAM
 
 This open-source version includes:
 - ✅ **Neo4j Integration** - Graph database for relationship storage
@@ -486,4 +486,4 @@ MIT License
 
 ---
 
-**HAmem - Give AI Better Memory** 🧠✨
+**H-SEAM - Give AI Better Memory** 🧠✨

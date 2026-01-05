@@ -1,5 +1,5 @@
 """
-HAmem Search模块
+H-SEAM Search模块
 
 提供基于知识图谱的智能检索和问答功能
 """
