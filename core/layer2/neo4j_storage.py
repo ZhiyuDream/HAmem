@@ -57,6 +57,7 @@ class Layer2Neo4jStorage(Neo4jStorageBase):
             "content": node.get('content', ''),
             "conversation_time": node.get('conversation_time'),
             "relative_time": node.get('relative_time'),
+            "absolute_time": node.get('absolute_time'),
             "layer": 2,
             "active": True,
             "type": node_type

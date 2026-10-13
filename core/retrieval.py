@@ -104,7 +104,7 @@ def create_qa_system(
     cache: UnifiedCache,
     storage,
     namespace: str = "default",
-    default_provider: str = "deepseek"
+    default_provider: str = "openai"
 ) -> QASystem:
     """
     Create QA System with optional hybrid search support

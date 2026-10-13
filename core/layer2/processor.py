@@ -132,6 +132,7 @@ class Layer2Processor:
                     "location": event.get('location'),
                     "conversation_time": event.get('conversation_time'),
                     "relative_time": event.get('relative_time'),
+                    "absolute_time": event.get('absolute_time'),
                     "layer": 2
                 }
                 nodes_to_create.append(node)
@@ -164,6 +165,7 @@ class Layer2Processor:
                     "participants": state.get('participants', []),
                     "conversation_time": state.get('conversation_time'),
                     "relative_time": state.get('relative_time'),
+                    "absolute_time": state.get('absolute_time'),
                     "duration": state.get('duration'),
                     "layer": 2
                 }
@@ -196,6 +198,7 @@ class Layer2Processor:
                     "affected_entities": context.get('affected_entities', []),
                     "conversation_time": context.get('conversation_time'),
                     "relative_time": context.get('relative_time'),
+                    "absolute_time": context.get('absolute_time'),
                     "impact": context.get('impact'),
                     "layer": 2
                 }

@@ -13,6 +13,12 @@ from .router import QuestionRouter
 from .answer import AnswerGenerator
 
 
+def _sorted_layer_keys(d):
+    """返回字典中 layerN 键按层数排序后的列表（layer0, layer1, layer2, ...）"""
+    keys = [k for k in d if k.startswith('layer') and k[5:].isdigit()]
+    return sorted(keys, key=lambda k: int(k[5:]))
+
+
 class QASystem:
     """
     End-to-end QA pipeline:
@@ -31,7 +37,7 @@ class QASystem:
         max_hops: int = 2,
         use_hybrid_search: bool = False,
         neo4j_client = None,
-        default_provider: str = "deepseek"
+        default_provider: str = "openai"
     ):
         """
         Args:
@@ -108,15 +114,14 @@ class QASystem:
                 layer1_top_k=10,
                 layer2_top_k=20,
                 layer3_top_k=5,
-                max_hops=1,  # 初始召回时只扩展1跳
-                expand_limit=30
+                max_hops=0,  # 初始召回纯向量，不带图扩展
+                expand_limit=0
             )
-            # 提取初始节点和扩展节点（包括Layer0）
+            # 提取初始节点和扩展节点（包括Layer0，动态支持Layer4+）
             current_nodes = []
-            for layer_key in ['layer0', 'layer1', 'layer2', 'layer3']:
-                if layer_key in recalled:
-                    layer_data = recalled[layer_key]
-                    current_nodes.extend(layer_data.get('all_nodes', []))
+            for layer_key in _sorted_layer_keys(recalled):
+                layer_data = recalled[layer_key]
+                current_nodes.extend(layer_data.get('all_nodes', []))
         else:
             # 使用原有检索（包括Layer0）
             recalled = self.recall.multi_layer_recall(
@@ -126,57 +131,69 @@ class QASystem:
                 layer2_top_k=20,
                 layer3_top_k=5
             )
-            current_nodes = (
-                recalled.get('layer0', []) + 
-                recalled.get('layer1', []) + 
-                recalled.get('layer2', []) + 
-                recalled.get('layer3', [])
-            )
+            current_nodes = []
+            for layer_key in _sorted_layer_keys(recalled):
+                current_nodes.extend(recalled.get(layer_key, []))
         
         stats['recalled_nodes'] = len(current_nodes)
         
         # Show recalled node IDs (完整列表)
         print(f"\n📋 Recalled node IDs:")
         if self.use_hybrid_search and hasattr(self.recall, 'multi_layer_recall_with_expansion'):
-            # 混合检索格式（包括Layer0）
-            for layer_key in ['layer0', 'layer1', 'layer2', 'layer3']:
-                if layer_key in recalled:
-                    layer_data = recalled[layer_key]
-                    layer_nodes = layer_data.get('all_nodes', [])
-                    layer_name = layer_key.upper()
-                    node_ids = [n.get('id', 'unknown') for n in layer_nodes]
-                    print(f"  {layer_name}: {node_ids} (共 {len(node_ids)} 个)")
+            # 混合检索格式（包括Layer0，动态支持Layer4+）
+            for layer_key in _sorted_layer_keys(recalled):
+                layer_data = recalled[layer_key]
+                layer_nodes = layer_data.get('all_nodes', [])
+                layer_name = layer_key.upper()
+                node_ids = [n.get('id', 'unknown') for n in layer_nodes]
+                print(f"  {layer_name}: {node_ids} (共 {len(node_ids)} 个)")
         else:
-            # 原有检索格式（需要添加Layer0）
-            layer0_ids = [n['id'] for n in recalled.get('layer0', [])]
-            layer1_ids = [n['id'] for n in recalled.get('layer1', [])]
-            layer2_ids = [n['id'] for n in recalled.get('layer2', [])]
-            layer3_ids = [n['id'] for n in recalled.get('layer3', [])]
-            if layer0_ids:
-                print(f"  Layer0: {layer0_ids} (共 {len(layer0_ids)} 个)")
-            print(f"  Layer1: {layer1_ids} (共 {len(layer1_ids)} 个)")
-            print(f"  Layer2: {layer2_ids} (共 {len(layer2_ids)} 个)")
-            print(f"  Layer3: {layer3_ids} (共 {len(layer3_ids)} 个)")
+            # 原有检索格式（动态支持Layer4+）
+            for layer_key in _sorted_layer_keys(recalled):
+                layer_nodes = recalled.get(layer_key, [])
+                layer_name = layer_key.upper()
+                node_ids = [n.get('id', 'unknown') for n in layer_nodes]
+                print(f"  {layer_name}: {node_ids} (共 {len(node_ids)} 个)")
         
         all_edges = []
         all_fragments = []
         
-        # Stage 2: Direct answer generation (no separate decision step)
-        print(f"\n📍 Stage 2: Direct Answer Generation")
+        # Stage 2: LLM决策（选module + 选扩展seed）→ 试答 → 不足则沿seed扩展
+        print(f"\n📍 Stage 2: Decision + Answer Generation")
+        
+        # 2.0: LLM决策：选specialized module + 选扩展seed
+        candidates, connecting_edges = self.expansion.find_candidates(
+            current_node_ids=[n['id'] for n in current_nodes],
+            max_candidates=50
+        )
+        # 语义候选：FAISS全库top中与问题相关但未进入召回集的节点（图断裂节点的发现通道）
+        semantic_candidates = []
+        if self.use_hybrid_search and hasattr(self.recall, 'hybrid_search'):
+            try:
+                query_embedding = self.recall.hybrid_search._get_query_embedding(question)
+                recalled_ids = {n['id'] for n in current_nodes}
+                for cand in self.recall.hybrid_search.cache.filter_and_search(
+                    query_embedding, filters=None, top_k=40
+                ):
+                    node = cand.get('node', {})
+                    if node and node.get('id') not in recalled_ids and node.get('layer', 0) >= 1:
+                        semantic_candidates.append(node)
+            except Exception as ex:
+                print(f"  ⚠️  Failed to collect semantic candidates: {ex}")
+        decision = self._make_expansion_decision(
+            question, current_nodes, candidates, all_edges, semantic_candidates
+        )
+        selected_modules = [decision.get('selected_module', 'detail_extraction')]
+        pending_seeds = decision.get('expansion_seeds', [])
+        print(f"  🎯 Using selected module: {selected_modules}")
+        print(f"  🌱 Expansion seeds from decision: {pending_seeds}")
         
         for hop in range(self.max_hops):
             print(f"\n🔄 Hop {hop + 1}/{self.max_hops}")
             
-            # 2.1: Find candidates for potential expansion
-            candidates, connecting_edges = self.expansion.find_candidates(
-                current_node_ids=[n['id'] for n in current_nodes],
-                max_candidates=50
-            )
+            print(f"  📊 Nodes used: {len(current_nodes)}")
             
-            print(f"  📊 Nodes used: {len(current_nodes)} (no filtering)")
-            print(f"  📊 Candidates available: {len(candidates)}")
-            
-            # 2.2: Try to answer directly (LLM will automatically select appropriate modules)
+            # 2.2: Try to answer directly (with decision-selected module)
             print(f"  🚀 Attempting to generate answer directly...")
             
             # Get fragments
@@ -184,23 +201,19 @@ class QASystem:
                 [n['id'] for n in current_nodes]
             )
             
-            # Build context
+            # Build context（动态按层分组，支持Layer4+）
             context = {
-                'layer1': [n for n in current_nodes if n.get('layer') == 1],
-                'layer2': [n for n in current_nodes if n.get('layer') == 2],
-                'layer3': [n for n in current_nodes if n.get('layer') == 3],
                 'edges': all_edges + connecting_edges,
                 'fragments': all_fragments
             }
+            for layer_num in sorted({n.get('layer') for n in current_nodes
+                                     if isinstance(n.get('layer'), int) and n.get('layer') >= 1}):
+                context[f'layer{layer_num}'] = [n for n in current_nodes if n.get('layer') == layer_num]
                 
-            # Try to answer directly (LLM will automatically select appropriate modules)
-            # Pass all modules so LLM can choose which ones to apply
-            all_modules = ['time_handling', 'state_analysis', 'opinion_sentiment', 
-                          'inference_prediction', 'detail_extraction', 'factual_lookup']
             answer_result = self.answer_generator.try_answer(
-                question, 
-                context, 
-                selected_modules=all_modules  # 让LLM自动选择和应用
+                question,
+                context,
+                selected_modules=selected_modules  # 决策LLM选中的module
             )
             stats['llm_calls'] += 1
             
@@ -235,25 +248,36 @@ class QASystem:
                     'stats': stats
                 }
             else:
-                # Answer is insufficient, try to expand using Neo4j
+                # Answer is insufficient: expand along LLM-selected seeds from recalled nodes
                 print(f"  ⚠️  Answer insufficient (detected 'Insufficient information'), attempting Neo4j expansion...")
                 
-                # 2.3: Expand using Neo4j if available
-            if not candidates:
-                print(f"  ⚠️  No candidates to expand, stop")
-                break
-            
-                # TODO: 使用Neo4j进行扩展（方案讨论中，暂不实现）
-                # 扩展方案：
-                # 1. 使用当前召回节点的ID，通过Neo4j的图扩展查询获取相关节点
-                # 2. 使用expand_from_nodes方法，从当前节点扩展到1-2跳的邻居节点
-                # 3. 过滤掉Fragment节点（layer=0），只保留Layer1/Layer2/Layer3节点
-                # 4. 限制扩展节点数量（例如最多50个）
-                # 5. 扩展后重新生成答案
+                if hop == 0:
+                    nodes_to_expand = list(pending_seeds)
+                    if not nodes_to_expand:
+                        # 决策未给出seed时的兜底：按向量相似度取前10个非Fragment召回节点
+                        nodes_to_expand = [n['id'] for n in current_nodes
+                                           if n.get('layer', 0) >= 1][:10]
+                        print(f"  🌱 Decision gave no seeds, fallback to top-10 recalled non-fragment nodes")
+                else:
+                    # 基于扩展后的节点集重新决策选seed
+                    candidates, connecting_edges = self.expansion.find_candidates(
+                        current_node_ids=[n['id'] for n in current_nodes],
+                        max_candidates=50
+                    )
+                    decision = self._make_expansion_decision(
+                        question, current_nodes, candidates, all_edges, semantic_candidates
+                    )
+                    selected_modules = [decision.get('selected_module', 'detail_extraction')]
+                    nodes_to_expand = decision.get('expansion_seeds', [])
+                    if not nodes_to_expand:
+                        print(f"  ⚠️  No seeds selected on re-decision, stop")
+                        break
                 
-                # 临时：使用现有的expansion.expand_nodes作为占位
-                nodes_to_expand = [c['id'] for c in candidates[:10]]  # 限制扩展节点数量
-                print(f"  🔗 Expanding {len(nodes_to_expand)} nodes using Neo4j...")
+                if not nodes_to_expand:
+                    print(f"  ⚠️  No seeds to expand, stop")
+                    break
+                
+                print(f"  🔗 Expanding from {len(nodes_to_expand)} LLM-selected seeds via Neo4j...")
                 
                 # 使用Neo4j扩展（如果可用）
                 if self.use_hybrid_search and hasattr(self.recall, 'hybrid_search'):
@@ -361,12 +385,12 @@ class QASystem:
         )
         
         context = {
-            'layer1': [n for n in current_nodes if n.get('layer') == 1],
-            'layer2': [n for n in current_nodes if n.get('layer') == 2],
-            'layer3': [n for n in current_nodes if n.get('layer') == 3],
             'edges': all_edges,
             'fragments': all_fragments
         }
+        for layer_num in sorted({n.get('layer') for n in current_nodes
+                                 if isinstance(n.get('layer'), int) and n.get('layer') >= 1}):
+            context[f'layer{layer_num}'] = [n for n in current_nodes if n.get('layer') == layer_num]
         
         # Final generation (with all modules available)
         print(f"\n💬 Generating answer...")
@@ -400,26 +424,31 @@ class QASystem:
         question: str,
         current_nodes: List[Dict],
         candidates: List[Dict],
-        edges: List[Dict]
+        edges: List[Dict],
+        semantic_candidates: List[Dict] = None
     ) -> Dict[str, Any]:
         """
         LLM decision: node filtering, whether to expand, and targets
         """
         print(f"  🤖 调用LLM进行扩展决策...")
-        
+        if semantic_candidates:
+            print(f"    语义候选节点: {len(semantic_candidates)}个")
+
         # 构建决策prompt
         prompt = self._build_decision_prompt(
             question,
             current_nodes,
             candidates,
-            edges
+            edges,
+            semantic_candidates
         )
-        
+
         # 调用LLM
         response = self.llm_client.call_llm(prompt, provider=self.default_provider)
-        
-        # 解析决策（传入question用于辅助检查）
-        decision = self._parse_decision_response(response, current_nodes, candidates, question)
+
+        # 解析决策（传入question用于辅助检查；seed校验池=召回节点∪语义候选）
+        seed_pool = list(current_nodes) + list(semantic_candidates or [])
+        decision = self._parse_decision_response(response, current_nodes, candidates, question, seed_pool)
         
         print(f"    选择模块: {decision.get('selected_module', 'unknown')}")
         print(f"    提前回答: {decision.get('can_answer_early', False)}")
@@ -431,7 +460,8 @@ class QASystem:
         question: str,
         current_nodes: List[Dict],
         candidates: List[Dict],
-        edges: List[Dict]
+        edges: List[Dict],
+        semantic_candidates: List[Dict] = None
     ) -> str:
         """
         Build decision prompt (using base_decision.txt)
@@ -442,27 +472,31 @@ class QASystem:
             'prompt',
             'base_decision.txt'
         )
-        
+
         if not os.path.exists(prompt_file):
             print(f"  ⚠️  Decision prompt not found, using simplified version")
             return self._build_simple_decision_prompt(question, current_nodes, candidates)
-        
+
         with open(prompt_file, 'r', encoding='utf-8') as f:
             template = f.read()
-        
+
         # 格式化recalled context
         recalled_context = self._format_nodes_for_prompt(current_nodes, max_nodes=30)
-        
+
         # 格式化candidate context
         candidate_context = self._format_nodes_for_prompt(candidates, max_nodes=30)
-        
+
+        # 语义相关但未召回的节点（向量top，图断裂节点的发现通道）
+        semantic_context = self._format_nodes_for_prompt(semantic_candidates or [], max_nodes=30)
+
         # Fragments信息（暂时留空，可以后续扩展）
         fragment_info = ""
-        
+
         return template.format(
             query=question,
             recalled_context=recalled_context,
             candidate_context=candidate_context,
+            semantic_context=semantic_context,
             fragment_info=fragment_info
         )
     
@@ -511,7 +545,8 @@ CANDIDATES:
         response: str,
         current_nodes: List[Dict],
         candidates: List[Dict],
-        question: str = ""
+        question: str = "",
+        seed_pool: List[Dict] = None
     ) -> Dict[str, Any]:
         """
         Parse LLM decision JSON
@@ -530,6 +565,14 @@ CANDIDATES:
         
         if result is None:
             result = default_result
+        
+        # 校验 expansion_seeds：必须是seed池（召回节点∪语义候选）中的 id，最多10个
+        pool = seed_pool if seed_pool is not None else current_nodes
+        valid_ids = {n.get('id') for n in pool}
+        raw_seeds = result.get('expansion_seeds', [])
+        if not isinstance(raw_seeds, list):
+            raw_seeds = []
+        result['expansion_seeds'] = [s for s in raw_seeds if s in valid_ids][:10]
         
         # 辅助检查：如果问题明显是时间相关的，但LLM没有选择time_handling，强制选择
         if question:

@@ -52,7 +52,7 @@ class Layer1Processor:
             namespace=namespace
         )
         
-        self.conflict_resolver = Layer1ConflictResolver(llm_client, token_tracker=token_tracker, default_provider=config.llm_provider if hasattr(config, 'llm_provider') else "deepseek")
+        self.conflict_resolver = Layer1ConflictResolver(llm_client, token_tracker=token_tracker, default_provider=config.llm_provider if hasattr(config, 'llm_provider') else "openai")
         # 使用Neo4jStorage替代文件存储
         if neo4j_client:
             self.storage = Layer1Neo4jStorage(neo4j_client, namespace)

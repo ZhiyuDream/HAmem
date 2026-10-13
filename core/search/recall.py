@@ -26,16 +26,30 @@ class SearchRecall:
         # 添加embedding缓存，避免重复生成
         self._embedding_cache = {}
     
+    def _max_layer_present(self) -> int:
+        """动态发现cache中实际存在的最大层数（递归高层抽象可产生Layer4+）"""
+        max_layer = 3
+        try:
+            for node in self.cache.cache['nodes'].values():
+                layer = node.get('layer', 0)
+                if isinstance(layer, int) and layer > max_layer:
+                    max_layer = layer
+        except Exception:
+            pass
+        return max_layer
+
     def multi_layer_recall(
         self,
         query: str,
         layer0_top_k: int = 2,
         layer1_top_k: int = 10,
         layer2_top_k: int = 20,
-        layer3_top_k: int = 5
+        layer3_top_k: int = 5,
+        higher_layer_top_k: int = 3
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Multi-layer recall: search multiple layers at once (including Layer0 Fragment)
+        动态循环 Layer1..max_layer，支持递归高层抽象产生的 Layer4+
         """
         print(f"\n🔍 Multi-layer recall: query='{query[:50]}...'")
         
@@ -69,15 +83,14 @@ class SearchRecall:
                 print(f"  ⚠️  Layer0 recall failed: {e}")
                 results['layer0'] = []
         
-        # Layer1/Layer2/Layer3
-        results['layer1'] = self.recall_by_layer(query, layer=1, top_k=layer1_top_k)
-        results['layer2'] = self.recall_by_layer(query, layer=2, top_k=layer2_top_k)
-        results['layer3'] = self.recall_by_layer(query, layer=3, top_k=layer3_top_k)
-        
-        print(f"  ✅ Layer1: {len(results['layer1'])} nodes")
-        print(f"  ✅ Layer2: {len(results['layer2'])} nodes")
-        print(f"  ✅ Layer3: {len(results['layer3'])} nodes")
-        
+        # Layer1..max_layer（动态循环）
+        top_k_by_layer = {1: layer1_top_k, 2: layer2_top_k, 3: layer3_top_k}
+        max_layer = self._max_layer_present()
+        for layer in range(1, max_layer + 1):
+            top_k = top_k_by_layer.get(layer, higher_layer_top_k)
+            results[f'layer{layer}'] = self.recall_by_layer(query, layer=layer, top_k=top_k)
+            print(f"  ✅ Layer{layer}: {len(results[f'layer{layer}'])} nodes")
+
         return results
     
     def recall_by_layer(

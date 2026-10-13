@@ -153,13 +153,13 @@ def count_tokens(text: str, encoding) -> int:
 class TokenTrackingLLMClient(LLMClient):
     """支持token追踪的LLMClient包装器"""
     
-    def __init__(self, config, token_tracker, default_provider="deepseek"):
+    def __init__(self, config, token_tracker, default_provider="openai"):
         super().__init__(config)
         self.token_tracker = token_tracker
         self.default_provider = default_provider
         self._current_call_type = None
     
-    def call_llm(self, prompt: str, model: str = None, provider: str = "deepseek", return_usage: bool = False, call_type: str = None):
+    def call_llm(self, prompt: str, model: str = None, provider: str = "openai", return_usage: bool = False, call_type: str = None):
         """
         调用LLM并记录token
         

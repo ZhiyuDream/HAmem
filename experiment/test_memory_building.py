@@ -134,7 +134,7 @@ def create_token_tracking_llm_client(config: Config, token_tracker: TokenTracker
             self.default_provider = default_provider
             self._current_call_type = None  # 当前调用类型（由调用者设置）
         
-        def call_llm(self, prompt: str, model: str = None, provider: str = "deepseek", return_usage: bool = False, call_type: str = None):
+        def call_llm(self, prompt: str, model: str = None, provider: str = "openai", return_usage: bool = False, call_type: str = None):
             """
             调用LLM并记录token
             

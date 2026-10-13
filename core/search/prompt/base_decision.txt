@@ -5,6 +5,10 @@ QUESTION: {query}
 RECALLED NODES:
 {recalled_context}
 
+SEMANTICALLY RELATED NODES (ranked by vector similarity to the question, but NOT in the recalled set above;
+they may be indirectly related - reachable only via semantic similarity, not via graph edges):
+{semantic_context}
+
 CANDIDATES:
 {candidate_context}
 
@@ -30,10 +34,21 @@ TASKS:
 
 2. Assess if recalled nodes contain sufficient information for the question
 
+3. Select up to 10 EXPANSION SEEDS - nodes whose graph neighbors are most likely to contain
+   missing details (names, dates, items, locations mentioned indirectly).
+   Choose nodes that are closely related to the question but whose content is incomplete
+   or points to related information not yet retrieved.
+   Seeds MUST be picked from RECALLED NODES or SEMANTICALLY RELATED NODES (use their exact "id" values).
+   Prefer RECALLED NODES when they are relevant; pick from SEMANTICALLY RELATED NODES when the
+   recalled set misses the topic entirely (e.g. the question asks about a specific name/item that
+   only appears in the semantic list).
+   Return an empty list only if the recalled nodes are clearly sufficient.
+
 JSON Response:
 {{
     "selected_module": "time_handling",
     "can_answer_early": true/false,
+    "expansion_seeds": ["node_id_1", "node_id_2"],
     "reasoning": "Brief analysis explaining the decision"
 }}
 

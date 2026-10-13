@@ -14,7 +14,7 @@ from .prompt import build_batch_split_fragment_prompt
 class FragmentProcessor:
     """分片处理器"""
     
-    def __init__(self, llm_client: LLMClient, default_provider: str = "deepseek", token_tracker=None):
+    def __init__(self, llm_client: LLMClient, default_provider: str = "openai", token_tracker=None):
         self.llm_client = llm_client
         self.default_provider = default_provider
         self.token_tracker = token_tracker  # Token统计收集器（可选）

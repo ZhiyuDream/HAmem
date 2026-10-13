@@ -74,7 +74,7 @@ class LlmConfig:
             temperature=0.8
         )
     """
-    provider: str = "deepseek"  # 默认提供商
+    provider: str = "openai"  # 默认提供商
     config: ProviderConfig = field(default_factory=ProviderConfig)  # 提供商特定配置
     
     # 支持的LLM提供商列表和对应的环境变量前缀
@@ -222,7 +222,7 @@ class LlmConfig:
         """
         # 如果没有指定provider，尝试从环境变量读取
         if provider is None:
-            provider = os.getenv("LLM_PROVIDER", "deepseek")
+            provider = os.getenv("LLM_PROVIDER", "openai")
         
         if provider not in cls.SUPPORTED_PROVIDERS:
             raise ValueError(f"不支持的LLM提供商: {provider}")
@@ -342,7 +342,7 @@ class LlmConfig:
             max_tokens=max_tokens,
             additional_params=kwargs
         )
-        return cls(provider="deepseek", config=config)
+        return cls(provider="openai", config=config)
     
     @classmethod
     def create_anthropic(

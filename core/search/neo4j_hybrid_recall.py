@@ -37,6 +37,18 @@ class Neo4jHybridRecall:
         self.hybrid_search = Neo4jHybridSearch(cache, neo4j_client, namespace)
         self._embedding_cache = {}  # 查询 embedding 缓存
     
+    def _max_layer_present(self) -> int:
+        """动态发现cache中实际存在的最大层数（递归高层抽象可产生Layer4+）"""
+        max_layer = 3
+        try:
+            for node in self.cache.cache['nodes'].values():
+                layer = node.get('layer', 0)
+                if isinstance(layer, int) and layer > max_layer:
+                    max_layer = layer
+        except Exception:
+            pass
+        return max_layer
+
     def recall_with_expansion(
         self,
         query: str,
@@ -77,11 +89,14 @@ class Neo4jHybridRecall:
         layer2_top_k: int = 20,
         layer3_top_k: int = 5,
         max_hops: int = 2,
-        expand_limit: int = 50
+        expand_limit: int = 50,
+        higher_layer_top_k: int = 3
     ) -> Dict[str, Any]:
         """
         多层召回并扩展（包括Layer0 Fragment）
-        
+
+        Layer1..max_layer 动态循环：递归高层抽象产生的 Layer4+ 也会参与召回
+
         Args:
             query: 查询文本
             layer0_top_k: Layer0 (Fragment) 初始节点数（使用向量相似度）
@@ -90,7 +105,8 @@ class Neo4jHybridRecall:
             layer3_top_k: Layer3 初始节点数
             max_hops: 图扩展的最大跳数
             expand_limit: 扩展节点数量限制
-            
+            higher_layer_top_k: Layer>=4 的初始节点数
+
         Returns:
             Dict: 各层的召回和扩展结果
         """
@@ -131,8 +147,13 @@ class Neo4jHybridRecall:
                     'search_method': 'FAISS'
                 }
         
-        # Layer1/Layer2/Layer3: 使用向量搜索 + 图扩展
-        for layer, top_k in [(1, layer1_top_k), (2, layer2_top_k), (3, layer3_top_k)]:
+        # Layer1..max_layer: 使用向量搜索 + 图扩展（动态循环，支持Layer4+）
+        top_k_by_layer = {1: layer1_top_k, 2: layer2_top_k, 3: layer3_top_k}
+        max_layer = self._max_layer_present()
+        for layer in range(1, max_layer + 1):
+            top_k = top_k_by_layer.get(layer, higher_layer_top_k)
+            if top_k <= 0:
+                continue
             layer_result = self.recall_with_expansion(
                 query=query,
                 vector_top_k=top_k,
@@ -220,23 +241,30 @@ class Neo4jHybridRecall:
         query: str,
         layer1_top_k: int = 10,
         layer2_top_k: int = 20,
-        layer3_top_k: int = 5
+        layer3_top_k: int = 5,
+        higher_layer_top_k: int = 3
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
-        多层召回（兼容原有接口）
-        
+        多层召回（兼容原有接口，动态循环支持Layer4+）
+
         Args:
             query: 查询文本
             layer1_top_k: Layer1 节点数
             layer2_top_k: Layer2 节点数
             layer3_top_k: Layer3 节点数
-            
+            higher_layer_top_k: Layer>=4 节点数
+
         Returns:
             Dict: 各层的节点列表
         """
         results = {}
-        
-        for layer, top_k in [(1, layer1_top_k), (2, layer2_top_k), (3, layer3_top_k)]:
+
+        top_k_by_layer = {1: layer1_top_k, 2: layer2_top_k, 3: layer3_top_k}
+        max_layer = self._max_layer_present()
+        for layer in range(1, max_layer + 1):
+            top_k = top_k_by_layer.get(layer, higher_layer_top_k)
+            if top_k <= 0:
+                continue
             layer_result = self.recall_with_expansion(
                 query=query,
                 vector_top_k=top_k,
@@ -247,6 +275,6 @@ class Neo4jHybridRecall:
             # 提取节点列表
             nodes = layer_result.get('all_nodes', [])
             results[f'layer{layer}'] = nodes
-        
+
         return results
 

@@ -18,6 +18,7 @@ from core.fragment.fragment_processor import FragmentProcessor
 from core.layer1.processor import Layer1Processor
 from core.layer2.processor import Layer2Processor
 from core.layer3.processor import Layer3Processor
+from core.layer3.recursive_processor import HigherLayerProcessor
 
 
 @dataclass
@@ -106,6 +107,8 @@ class MemoryBuilder:
             namespace="default",  # 将在build_memory中设置
             layer2_threshold=60
         )
+        # 递归高层抽象处理器，将在build_memory中设置
+        self.higher_layer_processor = None
     
     def _count_nodes_by_type(self, namespace: str, node_type: str, neo4j_client=None) -> int:
         """Count nodes by type from Neo4j"""
@@ -137,7 +140,7 @@ class MemoryBuilder:
                 print(f"⚠️  从Neo4j统计节点失败: {e}")
         return 0
     
-    def build_memory(self, conversation: ConversationData, namespace: str = "default", token_tracker=None, llm_provider: str = "deepseek") -> MemoryBuildResult:
+    def build_memory(self, conversation: ConversationData, namespace: str = "default", token_tracker=None, llm_provider: str = "openai") -> MemoryBuildResult:
         """
         Build memory from conversation
         
@@ -201,6 +204,19 @@ class MemoryBuilder:
             neo4j_client=neo4j_client,
             namespace=namespace,
             layer2_threshold=60,
+            token_tracker=token_tracker
+        )
+
+        # 递归高层抽象处理器：Layer3+ 攒够阈值后继续向上聚类抽象（Layer4、5...）
+        self.higher_layer_processor = HigherLayerProcessor(
+            llm_client=self.llm_client,
+            cache=cache,
+            neo4j_client=neo4j_client,
+            namespace=namespace,
+            abstraction_threshold=getattr(self.config, 'abstraction_threshold', 60),
+            similarity_threshold=getattr(self.config, 'similarity_threshold', 0.6),
+            min_cluster_size=getattr(self.config, 'abstraction_min_cluster_size', 7),
+            default_provider=llm_provider,
             token_tracker=token_tracker
         )
         
@@ -453,6 +469,15 @@ class MemoryBuilder:
                     layer3_edges = layer3_stats.get('created_edges', [])
                     fragment_nodes.extend(layer3_nodes)
                     fragment_edges.extend(layer3_edges)
+            # 递归高层抽象：Layer3+ 攒够阈值后继续向上聚类抽象（Layer4、5...）
+            higher_stats = self.higher_layer_processor.process(
+                namespace,
+                pending_nodes=layer3_nodes or None,
+                pending_edges=layer3_edges or None
+            )
+            if higher_stats.get('created_nodes'):
+                fragment_nodes.extend(higher_stats['created_nodes'])
+                fragment_edges.extend(higher_stats['created_edges'])
             layer3_time = time.time() - t_layer3
             if layer3_time > 0.001:  # 只记录有实际处理的时间
                 time_stats['layer3_processing'].append(layer3_time)
@@ -512,8 +537,9 @@ class MemoryBuilder:
                     
                     print(f"\n💾 直接写入Neo4j...")
                     
-                    # 按layer分组写入节点
-                    nodes_by_layer = {0: [], 1: [], 2: [], 3: []}
+                    # 按layer分组写入节点（支持递归高层抽象产生的 Layer4+ 节点）
+                    from collections import defaultdict
+                    nodes_by_layer = defaultdict(list)
                     for node in fragment_nodes:
                         layer = node.get('layer', 0)
                         nodes_by_layer[layer].append(node)
@@ -582,6 +608,30 @@ class MemoryBuilder:
                                 embedding = cache.embeddings[embedding_idx]
                                 vector_search.set_node_embedding(node_id, embedding)
                                 embeddings_set += 1
+
+                    # 写入Layer>=4节点（递归高层抽象节点）
+                    for layer_num in sorted(k for k in nodes_by_layer.keys() if k >= 4):
+                        for node in nodes_by_layer[layer_num]:
+                            properties = {
+                                key: node[key]
+                                for key in ['content', 'themes', 'significance', 'layer', 'active', 'type']
+                                if node.get(key) is not None
+                            }
+                            layer3_storage.create_node(
+                                node_id=node.get('id'),
+                                labels=["Abstraction", f"Layer{layer_num}"],
+                                properties=properties
+                            )
+                            nodes_written += 1
+                            # 设置embedding
+                            node_id = node.get('id')
+                            if node_id in cache.cache['nodes']:
+                                cached_node = cache.cache['nodes'][node_id]
+                                embedding_idx = cached_node.get('embedding_idx', -1)
+                                if embedding_idx >= 0:
+                                    embedding = cache.embeddings[embedding_idx]
+                                    vector_search.set_node_embedding(node_id, embedding)
+                                    embeddings_set += 1
                     
                     # 构建实体名称到ID的映射（用于将关系中的实体名称转换为ID）
                     entity_name_to_id = {}
@@ -634,16 +684,16 @@ class MemoryBuilder:
                             # Layer2结构性边
                             layer2_storage.create_structural_edge(source_id, target_id, edge_type, edge_props)
                             layer2_structural_count += 1
-                        elif edge_layer == 3:
-                            # Layer3边 - pattern/preference/behavior_rule到event的连接
-                            # 使用Layer3Storage的通用方法创建关系
+                        elif edge_layer >= 3:
+                            # Layer3+边 - pattern/preference/behavior_rule/抽象节点到下层节点的连接
+                            # 使用Layer3Storage的通用方法创建关系（对Layer>=4同样适用）
                             layer3_storage.create_relationship(
                                 source_id=source_id,
                                 target_id=target_id,
                                 rel_type=edge_type,
                                 properties=edge_props
                             )
-                            print(f"  🔗 创建Layer3关系: {source_id} -> {target_id} (type: {edge_type})")
+                            print(f"  🔗 创建Layer{edge_layer}关系: {source_id} -> {target_id} (type: {edge_type})")
                         else:
                             # Fragment连接边（layer=0）- Fragment到Entity/Layer2节点的连接
                             if source_id and source_id.startswith('fragment_'):

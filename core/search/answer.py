@@ -15,7 +15,7 @@ class AnswerGenerator:
     Combine base_answer prompt with specialized modules to generate the final answer
     """
     
-    def __init__(self, llm_client: LLMClient, prompt_dir: str = None, default_provider: str = "deepseek"):
+    def __init__(self, llm_client: LLMClient, prompt_dir: str = None, default_provider: str = "openai"):
         """
         Args:
             llm_client: LLM client
@@ -162,17 +162,27 @@ class AnswerGenerator:
             for node in layer2_nodes:
                 node_type = node.get('type', 'unknown').upper()
                 content = node.get('content', '')
+                absolute_time = node.get('absolute_time', '')
                 conversation_time = node.get('conversation_time', '')
                 relative_time = node.get('relative_time', '')
                 participants = node.get('participants', [])
                 location = node.get('location', '')
-                
-                # Build time info
+
+                # Build time info: 优先使用构建期已换算好的绝对时间
                 time_parts = []
-                if conversation_time:
-                    time_parts.append(f"time: {conversation_time}")
-                if relative_time:
-                    time_parts.append(f"relative: {relative_time}")
+                if os.environ.get("LEGACY_TIME_RENDER"):
+                    # 受控实验：旧版渲染（conversation_time 优先，忽略 absolute_time）
+                    if conversation_time:
+                        time_parts.append(f"time: {conversation_time}")
+                    if relative_time:
+                        time_parts.append(f"relative: {relative_time}")
+                else:
+                    if absolute_time:
+                        time_parts.append(f"time: {absolute_time}")
+                    elif conversation_time:
+                        time_parts.append(f"time: {conversation_time}")
+                    if relative_time and relative_time != absolute_time:
+                        time_parts.append(f"relative: {relative_time}")
                 
                 time_str = f" ({', '.join(time_parts)})" if time_parts else ""
                 
@@ -192,6 +202,25 @@ class AnswerGenerator:
                 node_type = node.get('type', 'unknown').upper()
                 content = node.get('content', '')
                 sections.append(f"- {node_type}: {content}\n")
+
+        # Layer>=4: 递归高层抽象节点（动态key：layer4, layer5, ...）
+        for key in sorted(context.keys()):
+            if not (key.startswith('layer') and key[5:].isdigit()):
+                continue
+            layer_num = int(key[5:])
+            if layer_num < 4:
+                continue
+            higher_nodes = context.get(key, [])
+            if not higher_nodes:
+                continue
+            sections.append(f"\n### High-level Abstractions (Layer {layer_num})\n")
+            for node in higher_nodes:
+                content = node.get('content', '')
+                themes = node.get('themes', [])
+                significance = node.get('significance', '')
+                themes_str = f" [themes: {', '.join(str(t) for t in themes)}]" if themes else ""
+                sig_str = f" (significance: {significance})" if significance else ""
+                sections.append(f"- {content}{themes_str}{sig_str}\n")
         
         # Edges
         edges = context.get('edges', [])

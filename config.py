@@ -60,6 +60,12 @@ class Config:
     # 检索配置
     search_top_k: int = int(os.getenv('SEARCH_TOP_K', '10'))
     similarity_threshold: float = float(os.getenv('SIMILARITY_THRESHOLD', '0.7'))
+
+    # 递归向上抽象配置（layer N 攒够阈值后聚类抽象出 layer N+1，N>=3）
+    # 阈值天然限制层数：每轮抽象节点数至少按 min_cluster_size 倍缩水，
+    # 越高层越难攒够阈值，无需额外层数上限
+    abstraction_threshold: int = int(os.getenv('ABSTRACTION_THRESHOLD', '60'))
+    abstraction_min_cluster_size: int = int(os.getenv('ABSTRACTION_MIN_CLUSTER_SIZE', '7'))
     
     # 其他配置
     debug: bool = os.getenv('DEBUG', 'false').lower() == 'true'

@@ -14,7 +14,7 @@ class QuestionRouter:
     Analyze question type and select specialized modules
     """
     
-    def __init__(self, llm_client: LLMClient, default_provider: str = "deepseek"):
+    def __init__(self, llm_client: LLMClient, default_provider: str = "openai"):
         """
         Args:
             llm_client: LLM client

@@ -240,17 +240,20 @@ class Neo4jHybridSearch:
         print(f"🔄 开始同步数据到Neo4j...")
         print(f"{'='*60}")
         
-        # 按 layer 分组节点
-        nodes_by_layer = {1: [], 2: [], 3: [], 0: []}
+        # 按 layer 分组节点（defaultdict 支持递归高层抽象产生的 Layer4+ 节点）
+        from collections import defaultdict
+        nodes_by_layer = defaultdict(list)
         for node_id, node in self.cache.cache['nodes'].items():
             layer = node.get('layer', 0)
             nodes_by_layer[layer].append(node)
-        
+
         print(f"\n📊 节点统计:")
         print(f"  - Fragment (Layer0): {len(nodes_by_layer[0])}")
         print(f"  - Entity (Layer1): {len(nodes_by_layer[1])}")
         print(f"  - Timeline (Layer2): {len(nodes_by_layer[2])}")
         print(f"  - Cluster (Layer3): {len(nodes_by_layer[3])}")
+        for layer_num in sorted(k for k in nodes_by_layer.keys() if k >= 4):
+            print(f"  - Abstraction (Layer{layer_num}): {len(nodes_by_layer[layer_num])}")
         
         # 同步 Layer1 节点（实体）
         if nodes_by_layer[1]:
@@ -343,7 +346,42 @@ class Neo4jHybridSearch:
                     stats['nodes_synced'] += 1
                 except Exception as e:
                     stats['errors'].append(f"Node {node.get('id')}: {e}")
-        
+
+        # 同步 Layer>=4 节点（递归高层抽象节点）
+        layer3_storage = None
+        for layer_num in sorted(k for k in nodes_by_layer.keys() if k >= 4):
+            nodes_l = nodes_by_layer[layer_num]
+            print(f"\n📦 同步Layer{layer_num}节点（高层抽象）: {len(nodes_l)} 个...")
+            if layer3_storage is None:
+                layer3_storage = Layer3Neo4jStorage(self.neo4j_client, self.namespace)
+            for node in nodes_l:
+                try:
+                    properties = {
+                        key: node[key]
+                        for key in ['content', 'themes', 'significance', 'layer', 'active', 'type']
+                        if node.get(key) is not None
+                    }
+                    layer3_storage.create_node(
+                        node_id=node.get('id'),
+                        labels=["Abstraction", f"Layer{layer_num}"],
+                        properties=properties
+                    )
+
+                    if update_embeddings:
+                        embedding_idx = node.get('embedding_idx')
+                        if embedding_idx is not None and embedding_idx != -1:
+                            embedding = self.cache.embeddings[embedding_idx]
+                            self.vector_search.set_node_embedding(
+                                node.get('id'),
+                                embedding.tolist(),
+                                labels=['Abstraction', f'Layer{layer_num}']
+                            )
+                            stats['embeddings_synced'] += 1
+
+                    stats['nodes_synced'] += 1
+                except Exception as e:
+                    stats['errors'].append(f"Node {node.get('id')}: {e}")
+
         # 同步 Fragment 节点（Layer0）
         if nodes_by_layer[0]:
             print(f"\n📦 同步Fragment节点（Layer0）: {len(nodes_by_layer[0])} 个...")

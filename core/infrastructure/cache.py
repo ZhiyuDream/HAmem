@@ -11,10 +11,14 @@
 import os
 import json
 import hashlib
+import threading
 import numpy as np
 import faiss
 from typing import Dict, List, Optional, Any, Tuple
 from .embedding import EmbeddingManager
+
+# FAISS index.search 非线程安全：并行QA时多线程同时search同一index会触发native崩溃
+_faiss_search_lock = threading.Lock()
 
 
 class UnifiedCache:
@@ -629,8 +633,10 @@ class UnifiedCache:
             k_candidates = min(top_k * 50, self.faiss_index.ntotal)
         else:
             k_candidates = min(top_k * 5, self.faiss_index.ntotal)
-        
-        D, I = self.faiss_index.search(query_array, k=k_candidates)
+
+        # FAISS index.search 非线程安全，并行QA下需加锁（search为毫秒级，锁竞争可忽略）
+        with _faiss_search_lock:
+            D, I = self.faiss_index.search(query_array, k=k_candidates)
         
         # 应用过滤条件
         results = []

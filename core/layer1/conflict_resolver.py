@@ -12,7 +12,7 @@ from core.infrastructure import LLMClient, parse_llm_json
 class Layer1ConflictResolver:
     """Layer1冲突解决器"""
     
-    def __init__(self, llm_client: LLMClient, token_tracker=None, default_provider: str = "deepseek"):
+    def __init__(self, llm_client: LLMClient, token_tracker=None, default_provider: str = "openai"):
         self.llm_client = llm_client
         self.token_tracker = token_tracker  # Token统计收集器（可选）
         self.default_provider = default_provider  # 默认LLM提供商
